@@ -15,10 +15,12 @@
 
 import logging
 from copy import deepcopy
+
 from graph.matches.matcher import Matcher
 from graph.types import NNEdge, Transposable, TransposeParameters
-from utils.node_id import NodeId
+from quantization.new_qrec import QRec
 from utils.graph import GraphView
+from utils.node_id import NodeId
 
 LOG = logging.getLogger("nntool." + __name__)
 
@@ -38,7 +40,7 @@ class ExpandTransposesMatcher(Matcher):
     DESCRIPTION = "Extract transposes from Transposable nodes for model generation"
     MODIFIES_DIMENSIONS = True
 
-    def match(self, G: GraphView, set_identity: bool = True):
+    def match(self, G: GraphView, set_identity: bool = True, **kwargs):
         # get a list of all the nodes that are transposable but not transposes
         # Need to do this first to avoid mutating it when doing the modifications
         tnodes = list(filter(lambda n: isinstance(n, Transposable) and
@@ -56,7 +58,8 @@ class ExpandTransposesMatcher(Matcher):
                     LOG.info("Expand transpose in on node %s", node.name)
                     has_modified_graph = True
                     in_params = TransposeParameters("%s_TIN_%s" % (node.name, idx),
-                                                    transpose=trans)
+                                                    transpose=trans,
+                                                    block_search_up=True)
                     if node.in_dims_hint and node.in_dims_hint[edge.to_idx]:
                         in_hint = node.in_dims_hint[edge.to_idx]
                         out_hint = apply_transpose_to_hint(in_hint, trans)
@@ -64,10 +67,7 @@ class ExpandTransposesMatcher(Matcher):
                         in_params.out_dims_hint = [out_hint.copy()]
                         node.in_dims_hint[edge.to_idx] = out_hint
                     if G.quantization:
-                        qrec_node = G.quantization[NodeId(node)]
-                        G.quantization[NodeId(in_params)] = qrec_node.DEFAULT(
-                            in_qs=deepcopy([qrec_node.in_qs[edge.to_idx]]),
-                            out_qs=deepcopy([qrec_node.in_qs[edge.to_idx]]))
+                        G.quantization.copy_qrec(node, 'in', edge.to_idx, in_params)
                     G.insert_node(in_params, edge.from_node.name, edge.to_node.name,
                                   from_idx=edge.from_idx, to_idx=edge.to_idx,
                                   edge_class=NNEdge)
@@ -82,18 +82,17 @@ class ExpandTransposesMatcher(Matcher):
                     LOG.info("Expand transpose out on node %s", node.name)
                     has_modified_graph = True
                     out_params = TransposeParameters("%s_TOUT_%s" % (node.name, idx),
-                                                     transpose=trans)
+                                                     transpose=trans,
+                                                     block_search_down=True)
                     if node.out_dims_hint:
                         out_hint = node.out_dims_hint[edge.from_idx]
-                        in_hint = apply_reverse_transpose_to_hint(out_hint, trans)
+                        in_hint = apply_reverse_transpose_to_hint(
+                            out_hint, trans)
                         out_params.in_dims_hint = [in_hint.copy()]
                         out_params.out_dims_hint = [out_hint.copy()]
                         node.out_dims_hint[edge.from_idx] = in_hint
                     if G.quantization:
-                        qrec_node = G.quantization[NodeId(node)]
-                        G.quantization[NodeId(out_params)] = qrec_node.DEFAULT(
-                            in_qs=[deepcopy(qrec_node.out_qs[edge.from_idx])],
-                            out_qs=[deepcopy(qrec_node.out_qs[edge.from_idx])])
+                        G.quantization.copy_qrec(node, 'out', edge.from_idx, out_params)
                     G.insert_node(out_params, edge.from_node.name, edge.to_node.name,
                                   from_idx=edge.from_idx, to_idx=edge.to_idx,
                                   edge_class=NNEdge)

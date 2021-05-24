@@ -75,5 +75,9 @@
 
 #include <pos/implem/implem.h>
 
+#ifdef __PLATFORM_GVSOC__
+#include <pmsis/platforms/gvsoc.h>
+#endif
+
 #endif
 

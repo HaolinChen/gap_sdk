@@ -11,6 +11,8 @@
 
 /* Tiler internal */
 
+extern int ByteConvert(int IsBit, int64_t X);
+
 extern void SetSymbolDefaultNames();
 
 extern Kernel_T *GetCurrentKernel();

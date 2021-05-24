@@ -16,21 +16,23 @@
 
 import os
 from copy import deepcopy
+from reports.draw_graph_reporter import DrawGraphReporter
 
 from graph.constant_store import ConstantStore
 from graph.dim import Dim
 from graph.matches.duplicate_constants import MatchDuplicateConstants
 from graph.matches.remove_quantize_operators import RemoveQuantizeOperators
 from graph.nngraph import NNGraph
-from graph.types import ConstantInputParameters
-from graph.types.base import NNEdge
+from graph.types import (ConcatParameters, ConstantInputParameters, NNEdge,
+                         SigmoidActivationParameters, SoftMaxParameters,
+                         SplitParameters)
 from importer.common.clean_dangling_nodes import clean_dangling_nodes
+from importer.common.get_reasonable_name import get_reasonable_name
 from importer.tflite2.common.tflite_graph import TFLiteGraph
 from importer.tflite2.tflite_schema_head.Model import Model
-from quantization.multiplicative.mult_quantization import (
-    MultConstantQuantizationRecord, MultQuantizationRecord)
-from quantization.qtype import QType
+from quantization.new_qrec import QRec
 from quantization.quantization_set import QuantizationSet
+from quantization.unified_quantizer import UnifiedQuantizer
 from utils.add_sys_path import add_sys_path
 from utils.node_id import NodeId
 
@@ -63,18 +65,22 @@ class TFLiteImporter(ImporterBase):
         LOG.info("Importing TFLITE model version %s", model.Version())
         check(model.Version() == 3, "Only support version 3 graphs at present")
         if model.SubgraphsLength() > 1:
-            LOG.warning("nntool only supports one subgraph. There may be errors loading this graph.")
-        G = NNGraph(model=model, filename=filename, name=opts.get('name'),
+            LOG.warning(
+                "nntool only supports one subgraph. There may be errors loading this graph.")
+        G = NNGraph(model=model,
+                    filename=filename,
+                    name=opts.get('name'),
                     constant_store=ConstantStore())
         if opts.get('load_quantization'):
             G.quantization = QuantizationSet()
             G.has_quantized_parameters = True
-            G.graph_identity.quantization_types.add('SQ8')
+            G.quantization.schemes_present.add('SQ8')
 
-        self._import_tflite_graph(G, TFLiteGraph.from_model(model, 0), opts)
+        self._import_tflite_graph(G, model, opts)
         clean_dangling_nodes(G)
         fix_split_in_edges(G)
         MatchDuplicateConstants().match(G)
+        # DrawGraphReporter().report(G)
         G.add_dimensions()
         remove_concats(G)
         if opts['remove_quantize_ops']:
@@ -89,36 +95,37 @@ class TFLiteImporter(ImporterBase):
                     to_remove.append(nid)
             for nid in to_remove:
                 del G.quantization[nid]
+            quantizer = UnifiedQuantizer.from_quantized_graph(G)
+            # check for quantization problems
+            # 1) need to force softmax/Sigmoid input to POW2 quantization
+            # 2) need to check that all concats and splits have same input and
+            #    output quantization
+            G.quantization = quantizer.quantize(G, start_nodes=G.nodes(node_classes=(
+                ConcatParameters,
+                SoftMaxParameters,
+                SplitParameters,
+                SigmoidActivationParameters)))
+            G.add_dimensions()
 
         return G
 
-    def _import_tflite_graph(self, G: NNGraph, graph: TFLiteGraph, opts: dict):
+    def _import_tflite_graph(self, G: NNGraph, model, opts: dict):
+        name_cache = set()
+        graph = TFLiteGraph.from_model(model, 0, anonymise=opts.get('anonymise'), name_cache=name_cache)
         handlers = self._get_handlers(graph.model_version)
         all_nodes = {}
         constants = self._get_all_constants(
-            G, graph.tensors, load_quantization=opts.get('load_quantization'))
+            G, graph.tensors, load_quantization=opts.get('load_quantization'),
+            name_cache=name_cache, anonymise=opts.get('anonymise'))
         all_nodes.update(constants)
         inputs = self._get_input_nodes(
             G, graph.input, load_quantization=opts.get('load_quantization'))
         all_nodes.update(inputs)
         self._provisional_outputs = self._get_output_nodes(
             G, graph.output, load_quantization=opts.get('load_quantization'))
-        self._import_nodes(G, graph, handlers, all_nodes, self._provisional_outputs, opts)
-        # propagate_hints(G)
+        self._import_nodes(G, graph, handlers, all_nodes,
+                           self._provisional_outputs, opts)
         return G
-
-    @staticmethod
-    def _validate_name(name):
-        def replace_all(text, bad_chars):
-            for i in bad_chars:
-                text = text.replace(i, '_')
-            return text
-        new_name = replace_all(name, [":", "/"])
-        # This doesn't work since the stats nids will not match in
-        # a saved state
-        # if new_name != name:
-        #     new_name += "_" + get_unique_suffix()
-        return new_name
 
     @staticmethod
     def _get_dim_from_shape(tf_shape):
@@ -133,17 +140,17 @@ class TFLiteImporter(ImporterBase):
         for tensor in node_recs:
             qtype = tensor.qtype
             if qtype:
-                if qtype.is_sq and qtype.is_asymmetric:
-                    qtype = QType.from_min_max_sq(qtype.min_val, qtype.max_val,
-                                                  quantized_dimension=qtype.quantized_dimension)
-                qrecs[NodeId(node_recs[tensor][0])] = MultConstantQuantizationRecord(
+                qtype = qtype.make_symmetric_signed()
+                setattr(qtype, 'is_input', True)
+                qrecs[NodeId(node_recs[tensor][0])] = QRec.scaled(
                     in_qs=[qtype], out_qs=[qtype])
 
-    def _get_all_constants(self, G, tensors, load_quantization=False):
+    def _get_all_constants(self, G, tensors, load_quantization=False, anonymise=False, name_cache=None):
         node_recs = {
             tensor: (
                 ConstantInputParameters(
-                    self._validate_name(tensor.name),
+                    get_reasonable_name(
+                        tensor.name, name_cache=name_cache, anonymise=anonymise),
                     dims=Dim.unnamed(tensor.shape),
                     value=tensor.value if load_quantization else tensor.dqvalue,
                     qtype=tensor.qtype if load_quantization else None,
@@ -207,7 +214,8 @@ class TFLiteImporter(ImporterBase):
                     raise ValueError("no handler found for custom operation %s" %
                                      node.custom_op_name)
 
-            params = handler.handle(node, all_nodes=all_nodes, G=G, opts=opts, importer=self)
+            params = handler.handle(
+                node, all_nodes=all_nodes, G=G, opts=opts, importer=self)
             if params is None:
                 continue
             for idx, out_tensor in enumerate(node.output):
@@ -217,8 +225,9 @@ class TFLiteImporter(ImporterBase):
                 G.add_edge(NNEdge(from_node=params,
                                   to_node=output[0], from_idx=idx, to_idx=output[1]))
                 if opts.get('load_quantization'):
-                    qtype = deepcopy(G.quantization[NodeId(params)].out_qs[idx])
-                    G.quantization[NodeId(output[0])] = MultQuantizationRecord(
+                    qtype = deepcopy(
+                        G.quantization[NodeId(params)].out_qs[idx])
+                    G.quantization[NodeId(output[0])] = QRec.scaled(
                         in_qs=[qtype],
                         out_qs=[qtype]
                     )

@@ -17,11 +17,11 @@ import logging
 
 import numpy as np
 
-from utils.symbolic.basic import Add, Div, Mul, Sub
+from expressions.symbolic.basic import Add, Div, Mul, Sub
 
 from ..dim import Dim
 from .base import (CanFuseToExpression, Parameters, SameNumberOfDimensionsForInputs,
-                   Transposable, expression_op)
+                   Transposable, expression_op, cls_op_name)
 
 LOG = logging.getLogger("nntool." + __name__)
 
@@ -74,6 +74,10 @@ class Broadcastable(Parameters):
         return tuple(res)
 
     def transpose_broadcast(self, transpose):
+        # # broadcasted input could have included batch dimensions
+        # # just expand the transpose not moving those axes
+        # while len(transpose) < max(len(shape) for shape in self.broadcast):
+        #     transpose = [0] + [dim + 1 for dim in transpose]
         self.broadcast = [tuple([shape[idx] for idx in transpose]) for shape in self.broadcast]
         self.axis_masks = [self.transpose_mask(shape, transpose) for shape in self.axis_masks]
 
@@ -100,9 +104,6 @@ class MatrixBroadcastedLinearOpParameters(CanFuseToExpression, Transposable,
     def get_parameter_size(self):
         return 0
 
-    def clone(self, name, groupn=None):
-        return None
-
     def compute_load(self):
         return self.out_dims[0].size() * 2
 
@@ -120,14 +121,21 @@ class MatrixBroadcastedLinearOpParameters(CanFuseToExpression, Transposable,
             out_dim.transpose(self.transpose_out[0])
         return [out_dim]
 
+    def should_fuse(self, node_set, qrec=None):
+        for transpose in [self.transpose_in, self.transpose_out]:
+            if transpose is None:
+                continue
+            if any(trans is not None for trans in transpose):
+                return False
+        return True
+
     def __str__(self):
         return "{} {} {}".format(self.op_name, Transposable.__str__(self), self.at_options)
 
-
 @expression_op(Add)
+@cls_op_name('add')
 class MatrixAddParameters(MatrixBroadcastedLinearOpParameters):
     TEST_MODE = False
-    op_name = "add"
 
     def __init__(self, name, *args, **kwargs):
         super(MatrixAddParameters, self).__init__(name, *args, **kwargs)
@@ -142,33 +150,41 @@ class MatrixAddParameters(MatrixBroadcastedLinearOpParameters):
     def force_quantized_index(self, val):
         self._force_quantized_index = val
 
-    def should_fuse(self, node_set):
+    def should_fuse(self, node_set, qrec=None):
         # add should fuse into an expression if there are several adds or the input
         # shapes don't match since we don't have broadcasted kernels in the AT gens
-        return self.TEST_MODE or len(node_set) > 1 or self.in_dims[0].layout_shape != self.in_dims[1].layout_shape
+        if self.TEST_MODE:
+            return True
+        return super().should_fuse(node_set, qrec=qrec) and (len(node_set) > 1 or self.in_dims[0].layout_shape != self.in_dims[1].layout_shape)
 
 
 @expression_op(Mul)
+@cls_op_name('mul')
 class MatrixMulParameters(MatrixBroadcastedLinearOpParameters):
     TEST_MODE = False
-    op_name = "mul"
 
-    def should_fuse(self, node_set):
-        return self.TEST_MODE or len(node_set) > 1
+    def should_fuse(self, node_set, qrec=None):
+        if self.TEST_MODE:
+            return True
+        if qrec and qrec.ktype == 'symmetric':
+            return True
+        return super().should_fuse(node_set, qrec=qrec) and (len(node_set) > 1 or self.in_dims[0].layout_shape != self.in_dims[1].layout_shape)
 
 
+@cls_op_name('sub')
 @expression_op(Sub)
 class MatrixSubParameters(MatrixBroadcastedLinearOpParameters):
-    op_name = "sub"
+    pass
 
 
+@cls_op_name('div')
 @expression_op(Div)
 class MatrixDivParameters(MatrixBroadcastedLinearOpParameters):
-    op_name = "div"
+    pass
 
 
+@cls_op_name('matmul')
 class MatMulOpParameters(Transposable):
-    op_name = "matmul"
 
     def __init__(self, name, *args, **kwargs):
         super(MatMulOpParameters, self).__init__(name, *args, **kwargs)
@@ -182,9 +198,6 @@ class MatMulOpParameters(Transposable):
 
     def get_parameter_size(self):
         return 0
-
-    def clone(self, name, groupn=None):
-        raise NotImplementedError()
 
     def compute_load(self):
         return self.out_dims[0].size() * 2

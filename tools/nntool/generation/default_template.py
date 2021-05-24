@@ -142,6 +142,7 @@ def generator_expressions_basic_kernel_header(G, gen):
 #define ${gen.project_name.upper()}_BASIC_KERNELS_H
 #include "Gap.h"
 #include "math_funcs.h"
+${gen.expressions_kernel_includes_generator()}
 
 ${gen.expressions_kernel_types_generator()}
 
@@ -201,10 +202,8 @@ def basic_kernel_source_template(G, naming_convension=None, code_generator=None)
 def basic_kernel_header_template(G, naming_convension=None, code_generator=None):
     return execute_template(generator_expressions_basic_kernel_header, G, naming_convension, code_generator)
 
-def dynamic_template(template_file):
-    with open(template_file) as fp:
-        template = fp.read()
 
+def dynamic_template_string(template):
 # pylint: disable=unused-argument
     def func(G, gen):
         pass
@@ -215,3 +214,8 @@ def dynamic_template(template_file):
         return execute_template(stringfunction(func), G, naming_convension, code_generator)
 
     return template_function
+
+def dynamic_template(template_file):
+    with open(template_file) as fp:
+        template = fp.read()
+    return dynamic_template_string(template)

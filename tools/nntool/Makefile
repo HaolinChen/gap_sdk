@@ -78,6 +78,10 @@ gen_req: clean
 	pipreqs --force . 
 	pipreqs --print ../nntool_examples >> requirements.txt
 
+vscode_env:
+	env | grep TILER > \.env
+	env | grep NNTOOL >> \.env
+
 clean:
 	rm -rf build flatbuffers $(TFLITE_DIR)/tflite_$(SCHEMA_V3) $(TFLITE_DIR)/tflite_$(SCHEMA_HEAD_NAME)
 

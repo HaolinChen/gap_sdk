@@ -93,7 +93,7 @@ class RemoveRelusMatch(Matcher):
     NAME = 'remove_relus'
     DESCRIPTION = 'Finds redundant relus in graph'
 
-    def match(self, G: GraphView, set_identity: bool = True):
+    def match(self, G: GraphView, set_identity: bool = True, **kwargs):
         visited_edges = {}
         nodes_to_remove = []
         has_modified_graph = False
@@ -119,12 +119,13 @@ class RemoveRelusMatch(Matcher):
             # Only relus so only one in edge
             LOG.info("removing redundant relu %s", node.name)
             in_edge = G.in_edges(node.name)[0]
-            for edge in G.out_edges(node.name):
+            out_edges = G.out_edges(node.name)
+            G.remove(node)
+            for edge in out_edges:
                 G.add_edge(NNEdge(from_node=in_edge.from_node,
                                   from_idx=in_edge.from_idx,
                                   to_node=edge.to_node,
                                   to_idx=edge.to_idx))
-            G.remove(node)
 
         if set_identity:
             self.set_identity(G)

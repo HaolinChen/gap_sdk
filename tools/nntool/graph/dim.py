@@ -404,6 +404,8 @@ class Dim():
 
             return base
         if isinstance(axis, int):
+            if axis >= len(base.shape):
+                ValueError(f'axis {axis} is invalid for a shape of len {len(base.shape)}')
             cnt = base.shape[axis]
             for i in range(1, len(dims)):
                 dim = dims[i]
@@ -781,6 +783,11 @@ class PadDim(Dim):
             return True
         raise AttributeError("Padding is not same so not compatible with AutoTiler")
 
+    def __str__(self):
+        if self._is_unknown:
+            return 'unknown'
+        shape = [(self.shape[idx], self.shape[idx+1]) for idx in range(0, len(self.shape), 2)]
+        return "x".join(str(dim) for dim in shape)
 
 DEFAULT_CONVFILTER_DIMS = ['out_c', 'in_c', 'h', 'w']
 

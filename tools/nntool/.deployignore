@@ -1,0 +1,6 @@
+test*
+tests/
+tmp/
+gsync
+deploy.py
+tests

@@ -14,14 +14,15 @@
 
 from generation.at_types.constant_info import ConstantInfo
 from generation.at_types.tc_arg_info import GlobalArgInfo
-from generation.generators.generator_decorators import (QREC_MULT8,
-                                                        generation_function)
-from graph.types import (ConvFusionParameters, FilterParameters)
-
+from generation.generator_decorators import QREC_MULT8, generation_function
+from graph.types import ConvFusionParameters, FilterParameters
+from quantization.multiplicative.mulbias import gen_mul_biases
 from utils.node_id import NodeId
 
-from .mult8_infos_generator import gen_constant
+# pylint: disable=wildcard-import, unused-wildcard-import
 from .global_names import *
+from .mult8_infos_generator import gen_constant
+
 
 @generation_function("globals", (FilterParameters, ConvFusionParameters), qrec_types=(QREC_MULT8,))
 def mult8_filter_globals_generator(gen, node, qrec, pnode, fnode) -> bool:
@@ -42,15 +43,17 @@ def mult8_filter_globals_generator(gen, node, qrec, pnode, fnode) -> bool:
 
 
 def gen_filter_globals(gen, pnode, fnode, fqrec):
-    cname_mul_scale, file_name_mul_scale = gen_constant(gen, pnode, fnode, MULSCALE)
-    cname_mul_shift, file_name_mul_shift = gen_constant(gen, pnode, fnode, MULSHIFT)
+    cname_mul_scale, file_name_mul_scale = gen_constant(
+        gen, pnode, fnode, MULSCALE)
+    cname_mul_shift, file_name_mul_shift = gen_constant(
+        gen, pnode, fnode, MULSHIFT)
 
-    mul_biases_q = fqrec.mul_biases_q
+    mul_biases_q = fqrec.cache['mul_biases_q']
 
     const_info_mul_scale = ConstantInfo(
-        file_name_mul_scale, mul_biases_q, contents=fqrec.gen_mul_biases(fnode))
+        file_name_mul_scale, mul_biases_q, contents=gen_mul_biases(fqrec, fnode))
     const_info_mul_shift = ConstantInfo(
-        file_name_mul_shift, mul_biases_q.shift_qtype, contents=fqrec.mul_biases_q.qnorms)
+        file_name_mul_shift, mul_biases_q.shift_qtype, contents=mul_biases_q.qnorms)
 
     gen.globals.append(GlobalArgInfo(mul_biases_q.ctype, cname_mul_scale,
                                      gen.opts['default_global_home_location'],

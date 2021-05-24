@@ -14,37 +14,87 @@
 
 import logging
 
-from generation.at_types.at_params import (NO_ACTIVATION, gen_activation_op)
+from generation.at_types.at_params import NO_ACTIVATION, gen_activation_op
 from generation.at_types.gen_ctrl import GenCtrl
 from generation.code_block import CodeBlock
-from generation.generators.generator_decorators import generation_function, QREC_MULT8
-from graph.types import MatMulOpParameters, ActivationParameters, MatMulOpFusionParameters
+from generation.generator_decorators import (QREC_MULT8,
+                                                        generation_function)
+from graph.types import (ActivationParameters, MatMulOpFusionParameters,
+                         MatMulOpParameters)
 
-from ..autotiler_kernel import AutotilerKernel
+from ..autotiler_kernel import (AutotilerKernel, gen_include_paths,
+                                gen_includes, gen_sources,
+                                kernel_include_paths, kernel_includes,
+                                kernel_sources)
 
 LOG = logging.getLogger("nntool." + __name__)
 
 MAT_MUL_OPER = "KOP_MATMUL"
 
-@generation_function("kernels", (MatMulOpParameters, MatMulOpFusionParameters), qrec_types=(QREC_MULT8, ))
+
+@generation_function(
+    "kernels",
+    (MatMulOpParameters, MatMulOpFusionParameters),
+    qrec_types=(QREC_MULT8, ))
 def mat_mul_kernel_generator(gen, node, qrec, in_eparams, out_eparams, cname):
     del in_eparams, out_eparams, qrec
     if isinstance(node, MatMulOpFusionParameters):
         cnodes = node.contained_nodes()
-        act_node = cnodes[-1] if isinstance(cnodes[-1], ActivationParameters) else None
+        act_node = cnodes[-1] if isinstance(cnodes[-1],
+                                            ActivationParameters) else None
     else:
         act_node = None
-    gen.kernels.append(MatMulKernel(node.name, cname, node, act_node, at_ver=gen.opts['at_ver'],
-                                    force_relu=gen.force_relu))
+    gen.kernels.append(
+        MatMulKernel(
+            node.name, cname, node, act_node, at_ver=gen.opts['at_ver'],
+            force_relu=gen.force_relu))
     return True
 
-def gen_mat_mul_sq8(code_block, cname, ctrl, colM1, lineM1, colM2, lineM2, act_oper):
-    code_block.write('CNN_MatMulAct_SQ8("{}", 4, 1, {}, {}, {}, {}, 0, 0, 1, 1, {}, {});'.format(cname, ctrl,
-                                                                                                 colM1, lineM1,
-                                                                                                 colM2, lineM2,
-                                                                                                 MAT_MUL_OPER,
-                                                                                                 act_oper))
+# int CNN_MatMulAct_SQ8(
+# 	char *Name,
 
+# 	CNN_GenControl_T *Ctrl,
+
+# 	int Bias_DataSize,
+# 	int Scale_DataSize,
+
+# 	int ColM1,
+# 	int LineM1,
+# 	int ColM2,
+# 	int LineM2,
+
+# 	int Width,
+# 	int Height,
+# 	int Scx,
+# 	int Scy,
+
+#         KernelOper_T MatMulOper,
+#         KernelOper_T ActOper
+# 	)
+def gen_mat_mul_sq8(code_block, cname, ctrl, colM1, lineM1, colM2, lineM2, act_oper):
+    code_block.write('CNN_MatMulAct_SQ8("{}", {}, 4, 1, {}, {}, {}, {}, 0, 0, 1, 1, {}, {});'.format(
+        cname, ctrl,
+        colM1, lineM1,
+        colM2, lineM2,
+        MAT_MUL_OPER,
+        act_oper))
+
+
+@kernel_sources(
+    '$(TILER_CNN_KERNEL_PATH_SQ8)/CNN_MatAlgebra_SQ8.c')
+@kernel_include_paths(
+    '$(TILER_CNN_KERNEL_PATH)',
+    '$(TILER_CNN_KERNEL_PATH_SQ8)')
+@kernel_includes(
+    'CNN_BasicKernels_SQ8.h')
+@gen_sources(
+    '$(TILER_CNN_GENERATOR_PATH)/CNN_Generator_Util.c',
+    '$(TILER_CNN_GENERATOR_PATH_SQ8)/CNN_Generators_SQ8.c')
+@gen_include_paths(
+    '$(TILER_CNN_GENERATOR_PATH)',
+    '$(TILER_CNN_GENERATOR_PATH_SQ8)')
+@gen_includes(
+    'CNN_Generators_SQ8.h')
 class MatMulKernel(AutotilerKernel):
     def __init__(self, node_name, cname, matmul_params, act_params, at_ver=3, gen_ctrl=None, force_relu=True):
         if gen_ctrl is None:
@@ -58,7 +108,8 @@ class MatMulKernel(AutotilerKernel):
         self.at_ver = at_ver
 
         if act_params is not None:
-            self.at_act_params = gen_activation_op(act_params.activation, force_relu=force_relu)
+            self.at_act_params = gen_activation_op(
+                act_params.activation, force_relu=force_relu)
         else:
             self.at_act_params = NO_ACTIVATION
 
@@ -80,6 +131,7 @@ class MatMulKernel(AutotilerKernel):
         else:
             gen_ctrl = "0"
 
-        gen_mat_mul_sq8(code_block, self.cname, gen_ctrl, self.colM1, self.lineM1, self.colM2, self.lineM2, self.at_act_params)
+        gen_mat_mul_sq8(code_block, self.cname, gen_ctrl, self.colM1,
+                        self.lineM1, self.colM2, self.lineM2, self.at_act_params)
 
         return code_block

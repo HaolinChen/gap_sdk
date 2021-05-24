@@ -27,7 +27,7 @@ class ConcatSplitMatch(Matcher):
     NAME = "concat_split"
     DESCRIPTION = "removes concat/split pair where all in edges on the concat match the out edges on the split"
 
-    def match(self, G: GraphView, set_identity: bool = True) -> bool:
+    def match(self, G: GraphView, set_identity: bool = True, **kwargs) -> bool:
         has_modified_graph = False
         for split_node in set([node for node in G.nodes() if isinstance(node, SplitParameters)]):
             in_edges = G.in_edges(split_node.name)

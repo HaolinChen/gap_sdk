@@ -28,7 +28,7 @@ class MatchReversedRnn(Matcher):
     DESCRIPTION = 'Fuse reverse operation into RNN/LSTM'
     NEEDS_VALID_DIMENSION = True
 
-    def match(self, G: GraphView, set_identity: bool = True):
+    def match(self, G: GraphView, set_identity: bool = True, **kwargs):
         # Only works for reverses connected to one RNN node
         reverse_nodes = set([node for node in G.nodes() if (isinstance(node, ReverseParameters) and
                                                             len(G.out_edges(node.name)) == 1 and

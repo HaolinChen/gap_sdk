@@ -1,0 +1,32 @@
+#!/usr/bin/env python3
+
+import argparse
+import gv.gvsoc_control as gvsoc
+
+parser = argparse.ArgumentParser(description='Control GVSOC')
+
+parser.add_argument("--host", dest="host", default="localhost", help="Specify host name")
+parser.add_argument("--port", dest="port", default=42951, type=int, help="Specify host port")
+
+args = parser.parse_args()
+
+
+gv = gvsoc.Telnet_proxy(args.host, args.port)
+
+axi = gvsoc.Router(gv)
+
+# Wait 1ms to be sure the ROM has booted since we are writing at beginning of binary
+gv.run(1000000000)
+
+# Send a value to the simulated test
+axi.mem_write_int(0x1c000000, 4, 0x11223344)
+
+# And wait until it sends back a special value
+while True:
+    gv.run(1000000000)
+
+    result = axi.mem_read_int(0x1c000000, 4)
+    if result == 0x55667788:
+        break;
+
+gv.quit()

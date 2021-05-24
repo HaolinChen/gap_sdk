@@ -1177,6 +1177,7 @@ vp::io_req_status_e Semaphore_unit::req(vp::io_req *req, uint64_t offset, bool i
     {
       if (semaphore->value > 0)
       {
+        *data = semaphore->value;
         semaphore->set_value(semaphore->value - 1);
         semaphore->trace_value.event((uint8_t *)&semaphore->value);
         this->trace.msg("Decrementing semaphore (semaphore: %d, coreId: %d, new_value: %d)\n", id, core);
@@ -1192,44 +1193,6 @@ vp::io_req_status_e Semaphore_unit::req(vp::io_req *req, uint64_t offset, bool i
       semaphore->set_value(semaphore->value +  *(uint32_t *)req->get_data());
       semaphore->trace_value.event((uint8_t *)&semaphore->value);
       this->trace.msg("Incrementing semaphore (semaphore: %d, core: %d, inc: %d, value: %d)\n", id, core, *(uint32_t *)req->get_data(), semaphore->value);
-
-      // The core is unlocking the semaphore, check if we have to wake-up someone
-      while (semaphore->value > 0 && semaphore->waiting_mask)
-      {
-        if (semaphore->waiting_mask & (1<<semaphore->elected_core))
-        {
-          // Clear the mask and wake-up the core.
-          this->trace.msg("Waking-up core waiting for semaphore (coreId: %d)\n", semaphore->elected_core);
-          vp::io_req *waiting_req = semaphore->waiting_reqs[semaphore->elected_core];
-
-          semaphore->waiting_mask &= ~(1<<semaphore->elected_core);
-          semaphore->trace_waiting_cores.event((uint8_t *)&semaphore->waiting_mask);
-
-          // Store the semaphore value into the pending request
-          // Don't reply now to the initiator, this will be done by the wakeup event
-          // to introduce some delays
-          if (!this->top->core_eu[semaphore->elected_core].interrupted_elw)
-          {
-            *(uint32_t *)waiting_req->get_data() = semaphore->value;
-          }
-          else
-          {
-            this->top->core_eu[semaphore->elected_core].interrupt_elw_value = semaphore->value;
-          }
-
-          // And trigger the event to the core
-          top->trigger_event(1<<semaphore_event, 1<<semaphore->elected_core); 
-
-          semaphore->set_value(semaphore->value - 1);
-          semaphore->trace_value.event((uint8_t *)&semaphore->value);
-        }
-
-        semaphore->elected_core++;
-        if (semaphore->elected_core == this->top->nb_core)
-        {
-          semaphore->elected_core = 0;
-        }
-      }
     }
   }
   else if (offset == EU_HW_SEM_LOAD_INC)
@@ -1240,6 +1203,44 @@ vp::io_req_status_e Semaphore_unit::req(vp::io_req *req, uint64_t offset, bool i
       semaphore->set_value(semaphore->value + 1);
       this->trace.msg("Incrementing semaphore (semaphore: %d, core: %d, value: %d)\n", id, core, semaphore->value);
       semaphore->trace_value.event((uint8_t *)&semaphore->value);
+    }
+  }
+
+  // The core is unlocking the semaphore, check if we have to wake-up someone
+  while (semaphore->value > 0 && semaphore->waiting_mask)
+  {
+    if (semaphore->waiting_mask & (1<<semaphore->elected_core))
+    {
+      // Clear the mask and wake-up the core.
+      this->trace.msg("Waking-up core waiting for semaphore (coreId: %d)\n", semaphore->elected_core);
+      vp::io_req *waiting_req = semaphore->waiting_reqs[semaphore->elected_core];
+
+      semaphore->waiting_mask &= ~(1<<semaphore->elected_core);
+      semaphore->trace_waiting_cores.event((uint8_t *)&semaphore->waiting_mask);
+
+      // Store the semaphore value into the pending request
+      // Don't reply now to the initiator, this will be done by the wakeup event
+      // to introduce some delays
+      if (!this->top->core_eu[semaphore->elected_core].interrupted_elw)
+      {
+        *(uint32_t *)waiting_req->get_data() = semaphore->value;
+      }
+      else
+      {
+        this->top->core_eu[semaphore->elected_core].interrupt_elw_value = semaphore->value;
+      }
+
+      // And trigger the event to the core
+      top->trigger_event(1<<semaphore_event, 1<<semaphore->elected_core); 
+
+      semaphore->set_value(semaphore->value - 1);
+      semaphore->trace_value.event((uint8_t *)&semaphore->value);
+    }
+
+    semaphore->elected_core++;
+    if (semaphore->elected_core == this->top->nb_core)
+    {
+      semaphore->elected_core = 0;
     }
   }
 

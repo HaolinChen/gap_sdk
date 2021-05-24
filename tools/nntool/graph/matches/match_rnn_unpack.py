@@ -240,7 +240,7 @@ class MatchRnnUnpack(Matcher):
             last_dim = node_dim
             modified_nodes.add(node)
 
-    def match(self, G: GraphView, set_identity: bool = True):
+    def match(self, G: GraphView, set_identity: bool = True, **kwargs):
         rnn_nodes = [self.find_unpack(G, node)
                      for node in G.nodes()
                      if isinstance(node, RNNBaseParameters) and node.n_output_cells > 1]

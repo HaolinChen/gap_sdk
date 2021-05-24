@@ -1,20 +1,5 @@
-#if 1
 #include "string.h"
-
 #include "pmsis.h"
-#include "pmsis/task.h"
-#include "pmsis/rtos/os_frontend_api/os.h"
-#include "pmsis/rtos/event_kernel/event_kernel.h"
-#include "pmsis/rtos/malloc/cl_l1_malloc.h"
-#include "pmsis/cluster/cluster_sync/fc_to_cl_delegate.h"
-#include "pmsis/cluster/cluster_sync/cl_to_fc_delegate.h"
-#include "pmsis/cluster/cluster_sync/cl_synchronisation.h"
-#include "pmsis/cluster/cluster_team/cl_team.h"
-#include "pmsis/implem/hal/hal.h"
-//#include "pmsis/implem/hal/gap_eu/pmsis_eu.h"
-#include "cores/TARGET_RISCV_32/core_utils.h"
-#include "cores/TARGET_RISCV_32/core_gap.h"
-//#include "pmsis/implem/drivers/pmu/pmsis_pmu.h"
 
 #define NB_CLUSTER                 ( 1 )
 #define CL_MASTER_CORE_STACK_SIZE  ( 0x800 ) /*!< Stack size for Cluster Master core, 2kB. */
@@ -44,8 +29,6 @@ extern char  __heapsram_size;
 
 PI_L1 pi_cl_dma_cmd_t *fifo_first;
 PI_L1 pi_cl_dma_cmd_t *fifo_last;
-
-#if 1
 
 struct cluster_driver_data *__per_cluster_data[NB_CLUSTER] = {NULL};
 
@@ -90,120 +73,6 @@ static const struct pi_cluster_conf __cluster_default_conf = {
     .heap_size = 0x400
 };
 
-void cl_cluster_exec_loop(void)
-{
-    /* Cluster Icache Enable*/
-    SCBC->ICACHE_ENABLE = 0xFFFFFFFF;
-
-    /* Initialization for the task dispatch loop */
-    hal_eu_evt_mask_set((1 << CL_IRQ_DISPATCH_EVT) |
-                        (1 << CL_IRQ_HW_MUTEX_EVT) |
-                        (1 << CL_IRQ_BARRIER_EVT));
-
-    asm volatile ("add    s1,  x0,  %0" :: "r" (CORE_EU_DISPATCH_DEMUX_BASE));
-    asm volatile ("add    s2,  x0,  %0" :: "r" (CORE_EU_BARRIER_DEMUX_BASE));
-    asm volatile ("add    s3,  x0,  %0" :: "r" (CORE_EU_CORE_DEMUX_BASE));
-
-    if(__native_core_id())
-    {
-        while(1) {
-            asm volatile (
-                    "1:\n\t"
-                    "p.elw  t0,  0(s1)         \n\t"
-                    "p.elw  a0,  0(s1)         \n\t"
-                    "andi   t1,  t0,   1       \n\t"
-                    "bne    t1,  zero, 2f      \n\t"
-                    "jalr   t0                 \n\t"
-                    "p.elw  t0,  0x1c(s2)         \n\t"
-                    "j      3f                 \n"
-                    "2:\n\t"
-                    "p.bclr t0, t0, 0,0        \n\t"
-                    "jalr   t0                 \n"
-                    "3:"
-                    );
-        } // slaveloop
-    } else {
-        /*
-         * Core 0 will wait for tasks from FC side
-         */
-        /* Enable IRQ for DMA on Core 0. */
-        hal_eu_irq_mask_set(1 << CL_IRQ_DMA1);
-        __enable_irq();
-
-        asm volatile("add   s4,  x0,  %0\n\t"
-                :
-                : "r"(__per_cluster_data)
-                );
-        while(1)
-        {
-            // MasterLoop
-            asm volatile (
-                    "1:\n\t"
-                    // EU_EVT_MaskWaitAndClr(1 << FC_NOTIFY_CLUSTER_EVENT);
-                    "p.bset  t1, x0, 0, %0 \n\t"
-                    "sw      t1, 0x8(s3)   \n\t"
-                    "p.elw   t0, 0x3C(s3)  \n\t"
-                    "sw      t1, 0x4(s3)   \n\t"
-                    // check whether driver is init, sleep otherwise
-                    "lw      s5, (s4)      \n\t"
-                    "beqz    s5, 4f        \n\t"
-                    // task check
-                    "lw      s0, (s5)      \n\t"
-                    "beqz    s0, 4f        \n\t"
-                    // stack init
-                    "lw      a0, 8(s0)     \n\t"
-                    "lw      a1, 12(s0)    \n\t"
-                    "add     sp, a0, a1    \n\t"
-                    "mv      a0, s0        \n\t"
-                    "jal     cl_stack_init \n\t"
-                    // task execution
-                    "lw      a1, (s0)       \n\t"
-                    "lw      a0, 4(s0)      \n\t"
-                    "jalr    a1             \n\t"
-                    "jal     cl_task_finish \n\t"
-                    "4:"
-                    :
-                    : "I" (FC_NOTIFY_CLUSTER_EVENT)
-                    );
-        }
-    } // masterloop
-}
-
-/*!
- * @brief All cores set stack.
- *
- * @param  stacksPtr     Overall stack pointer for all cores.
- * @param  coreStackSize Each core's stack size.
- * @note .
- */
-static void cl_set_core_stack(void *arg)
-{
-    struct pi_cluster_task *task = arg;
-    uint32_t cid = __native_core_id();
-    if (cid)
-    {
-        // slaves
-        uint32_t core_stack_ptr = (uint32_t) task->stacks + task->stack_size;
-        core_stack_ptr += task->slave_stack_size * cid;
-
-        /* Update sp */
-        asm ("add  sp, x0, %0" :: "r" (core_stack_ptr) );
-    }
-}
-
-/*!
- * @brief All cores do task init.
- * Master core 0 do stacks initilization.
- * @param.
- * @note .
-  */
-void cl_stack_init(struct pi_cluster_task *task)
-{
-    PRINTF("cl_stack_init: going in\n");
-    pi_cl_team_fork(task->nb_cores, cl_set_core_stack, (void *)task);
-    PRINTF("cl_stack_init: going out\n");
-    hal_eu_mutex_init(0);
-}
 
 
 void cl_task_finish(void)
@@ -217,13 +86,13 @@ void cl_task_finish(void)
 
     PRINTF("cl_task_finish: task=%p\n",task);
 
+    // clean up finished cluster task
+    cl_pop_cluster_task(data);
     if(task->completion_callback)
     {
         pi_cl_send_task_to_fc(task->completion_callback);
     }
     // -----
-    // clean up finished cluster task
-    cl_pop_cluster_task(data);
     //PRINTF("cl_task_finish: data=%p\n",data);
 }
 
@@ -246,20 +115,39 @@ int pi_cluster_open(struct pi_device *device)
     }
 
     struct pi_cluster_conf *_conf = (struct pi_cluster_conf *)device->config;
-    device->data = __per_cluster_data[_conf->id];
+    struct cluster_driver_data *cl_data = __per_cluster_data[_conf->id];
+    device->data = cl_data;
     PRINTF("OPEN---precheck: device->data=%p\n",device->data);
     // if device data has not yet been populated
-    if (device->data == NULL)
+    if (cl_data == NULL)
     {
-        device->data = pi_malloc(sizeof(struct cluster_driver_data));
+        cl_data = pi_malloc(sizeof(struct cluster_driver_data));
+        if (cl_data == NULL)
+        {
+            PRINTF("Error allocating cluster struct !\n");
+            return -11;
+        }
+        memset(cl_data, 0, sizeof(struct cluster_driver_data));
+        __per_cluster_data[_conf->id] = cl_data;
+        #if !defined(__DISABLE_PRINTF__) && (defined(PRINTF_UART) || defined(PRINTF_SEMIHOST))
+        uint8_t cl_nb_cores = pi_cl_cluster_nb_cores();
+        uint32_t printf_buffer_size = (uint32_t) PRINTF_BUFFER_SIZE;
+        uint32_t buffer_size = cl_nb_cores * printf_buffer_size * sizeof(uint8_t);
+        cl_data->printf_buffer = pi_l2_malloc(buffer_size);
+        PRINTF("Alloc buffer=%lx, size=%ld\n", cl_data->printf_buffer, buffer_size);
+        for (uint8_t i=0; i<cl_nb_cores; i++)
+        {
+            cl_data->printf_buffer_index[i] = 0;
+            uint8_t *buffer = &(cl_data->printf_buffer[i * printf_buffer_size]);
+            memset(buffer, 0, printf_buffer_size);
+        }
+        #endif  /* __DISABLE_PRINTF__ && (PRINTF_UART || PRINTF_SEMIHOST) */
+        device->data = __per_cluster_data[_conf->id];
         PRINTF("OPEN--post-check: device->data=%p\n",device->data);
-        struct cluster_driver_data *_data = (struct cluster_driver_data *)device->data;
-        memset(_data, 0, sizeof(struct cluster_driver_data));
-        pmsis_mutex_init(&_data->task_mutex);
-        pmsis_mutex_init(&_data->powerstate_mutex);
-        _data->task_to_fc = NULL;
-        // fill the per cluster data ptr
-        __per_cluster_data[_conf->id] = _data;
+        pmsis_mutex_init(&(cl_data->task_mutex));
+        pmsis_mutex_init(&(cl_data->powerstate_mutex));
+        cl_data->task_to_fc = NULL;
+        cl_data->hw_barrier_alloc = (uint8_t) CL_ALLOC_INIT_BARRIER;
         PRINTF("per cluster data[%lx]=%lx\n",_conf->id,__per_cluster_data[_conf->id]);
     }
     PRINTF("near start: device->config=%p\n",device->config);
@@ -311,6 +199,12 @@ int pi_cluster_close(struct pi_device *device)
         pmsis_mutex_deinit(&(_data->task_mutex));
         pmsis_mutex_deinit(&(_data->powerstate_mutex));
         // free all structures
+        #if !defined(__DISABLE_PRINTF__) && (defined(PRINTF_UART) || defined(PRINTF_SEMIHOST))
+        uint8_t cl_nb_cores = pi_cl_cluster_nb_cores();
+        uint32_t printf_buffer_size = (uint32_t) PRINTF_BUFFER_SIZE;
+        uint32_t buffer_size = cl_nb_cores * printf_buffer_size * sizeof(uint8_t);
+        pi_l2_free(_data->printf_buffer, buffer_size);
+        #endif  /* __DISABLE_PRINTF__ && (PRINTF_UART || PRINTF_SEMIHOST) */
         pi_free(device->api);
         pi_free(device->data);
         __per_cluster_data[_conf->id] = NULL; // pointer makes no sense anymore, reset it
@@ -661,7 +555,3 @@ void pi_cluster_conf_init(struct pi_cluster_conf *conf)
     conf->device_type = PI_DEVICE_CLUSTER_TYPE;
     conf->id = 0;
 }
-
-
-#endif
-#endif

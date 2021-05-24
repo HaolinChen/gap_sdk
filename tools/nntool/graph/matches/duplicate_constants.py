@@ -27,7 +27,7 @@ class MatchDuplicateConstants(Matcher):
     NAME = "match_duplicate_constants"
     DESCRIPTION = """Find constants that are linked to more than one node and duplicate them"""
 
-    def match(self, G: GraphView, set_identity: bool = True):
+    def match(self, G: GraphView, set_identity: bool = True, **kwargs):
         has_modified = False
         for node in G.nodes(node_classes=ConstantInputParameters):
             out_edges = G.out_edges(node.name)

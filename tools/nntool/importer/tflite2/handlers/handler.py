@@ -21,6 +21,8 @@ from .. import common
 
 @handler_option('remove_quantize_ops', val_type=bool, default=True, desc="remove cast and quantization operations on non-constant tensors")
 @handler_option('load_quantization', val_type=bool, default=False, desc="load TFLITE tensor quantization", shortcut='q')
+@handler_option('use_lut_sigmoid', val_type=bool, default=False, desc="Map logistic node from tflite onto LUT based sigmoid operation (supported only with sq8 quantization)")
+@handler_option('use_lut_tanh', val_type=bool, default=False, desc="Map TANH node from tflite onto LUT based tanh operation (supported only with sq8 quantization)")
 class Handler(HandlerOptions):
     """ This class is base handler class.
     Base backend and frontend base handler class inherit this class.

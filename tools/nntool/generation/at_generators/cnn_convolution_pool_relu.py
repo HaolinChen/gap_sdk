@@ -172,12 +172,14 @@ def gen_activation_op(activation):
         aop = "KOP_RELUN"
     elif activation == "relun":
         aop = "KOP_RELUN"
-    elif activation == "sigmoid" or activation == "hsigmoid":
+    elif activation == "hsigmoid":
         aop = "KOP_HSIGMOID"
     elif activation == "swish" or activation == "hswish":
         aop = "KOP_HSWISH"
     elif activation == 'leaky':
         aop = "KOP_LEAKYRELU"
+    elif activation == "sigmoid":
+        aop = "KOP_SIGMOID"
     else:
         raise NotImplementedError("activation type %s not implemented" % activation)
     return aop

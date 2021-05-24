@@ -38,7 +38,7 @@ class MatchExternalBias(Matcher):
     DESCRIPTION = 'Fuse bias addition after filter with filter bias'
 
 
-    def match(self, G: GraphView, set_identity: bool = True):
+    def match(self, G: GraphView, set_identity: bool = True, **kwargs):
         has_modified_graph = False
         filter_nodes = [node for node in G.nodes() if isinstance(node, FilterParameters)]
         for filter_node in filter_nodes:

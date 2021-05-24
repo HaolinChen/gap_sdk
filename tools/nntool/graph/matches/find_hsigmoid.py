@@ -21,11 +21,7 @@ from graph.types import (ConstantInputParameters, HSigmoidActivationParameters,
                          MatrixAddParameters,
                          MatrixBroadcastedLinearOpParameters,
                          MatrixMulParameters, NNEdge, ReluActivationParameters)
-from quantization.float32.float32_quantization import Float32QuantizationRecord
-from quantization.multiplicative.mult_quantization import (
-    MultQuantizationRecord, MultQuantizationRecordBase)
-from quantization.symmetric.symmetric_quantization import \
-    SymmetricQuantizationRecord
+from quantization.new_qrec import QRec
 from utils.graph import Edge, GraphView
 from utils.node_id import NodeId
 
@@ -34,6 +30,8 @@ from .matcher import DefaultMatcher, Matcher, MatchNode
 LOG = logging.getLogger("nntool." + __name__)
 
 THRESHOLD = 1 / 127
+
+
 def check_equals(G, node, val):
     if node.value is None or len(node.value) != 1:
         return False
@@ -77,21 +75,15 @@ class MatchCloseHSigmoid(DefaultMatcher):
             elif isinstance(node, MatrixMulParameters):
                 mul_node = node
 
-        activation = HSigmoidActivationParameters(mul_node.name + "_fused_close_hsigmoid", offset=0)
+        activation = HSigmoidActivationParameters(
+            mul_node.name + "_fused_close_hsigmoid", offset=0)
 
         if G.quantization:
             reluqrec = G.quantization[NodeId(relu_node)]
             mulqrec = G.quantization[NodeId(mul_node)]
             del G.quantization[NodeId(constant_node)]
-            if isinstance(reluqrec, (SymmetricQuantizationRecord)):
-                pqrec = SymmetricQuantizationRecord(
-                    in_qs=reluqrec.in_qs, out_qs=mulqrec.out_qs)
-            elif isinstance(reluqrec, (MultQuantizationRecord)):
-                pqrec = MultQuantizationRecord(in_qs=reluqrec.in_qs, out_qs=mulqrec.out_qs)
-            elif isinstance(reluqrec, (Float32QuantizationRecord)):
-                pqrec = Float32QuantizationRecord(in_qs=reluqrec.in_qs, out_qs=mulqrec.out_qs)
-            else:
-                raise NotImplementedError()
+            pqrec = QRec.copy_ktype(
+                reluqrec, in_qs=reluqrec.in_qs, out_qs=mulqrec.out_qs)
             G.quantization[NodeId(activation)] = pqrec
         return activation, None, None
 
@@ -99,13 +91,14 @@ class MatchCloseHSigmoid(DefaultMatcher):
 def look_back(G, node, state=None):
     # TODO - Pass through nodes that don't modify the tensor contents
     if state is None:
-        state = {'relu1': None, 'add': None, 'relu2': None, 'mul': None, 'relu3': None}
+        state = {'relu1': None, 'add': None,
+                 'relu2': None, 'mul': None, 'relu3': None}
     qrec = G.quantization.get(NodeId(node))
-    if not isinstance(qrec, MultQuantizationRecordBase):
+    if not qrec or qrec.ktype != 'scaled':
         return None
     if isinstance(node, ReluActivationParameters):
         if state['add']:
-            state['relu1'] = None # (node, qrec)
+            state['relu1'] = None  # (node, qrec)
         elif node.upper_bound == 6:
             state['relu2'] = (node, qrec)
         else:
@@ -143,7 +136,8 @@ def look_back(G, node, state=None):
 
 def process_rec(G, oprec):
     mul_node = oprec['mul'][0]
-    activation = HSigmoidActivationParameters(mul_node.name + "_fused_far_hsigmoid")
+    activation = HSigmoidActivationParameters(
+        mul_node.name + "_fused_far_hsigmoid")
     G.add_node(activation)
     mulqrec = G.quantization[NodeId(mul_node)]
     G.quantization[NodeId(activation)] = mulqrec
@@ -151,21 +145,25 @@ def process_rec(G, oprec):
         mulqrec.in_qs = oprec['relu1'][1].in_qs
         del G.quantization[NodeId(oprec['relu1'][0])]
         for edge in G.in_edges(oprec['relu1'][0].name):
-            G.add_edge(NNEdge(from_node=edge.from_node, from_idx=edge.from_idx, to_node=activation.name))
+            G.add_edge(NNEdge(from_node=edge.from_node,
+                              from_idx=edge.from_idx, to_node=activation.name))
         G.remove(oprec['relu1'][0])
     else:
         mulqrec.in_qs = oprec['add'][1].in_qs
         for edge in G.in_edges(oprec['add'][0].name):
-            G.add_edge(NNEdge(from_node=edge.from_node, from_idx=edge.from_idx, to_node=activation.name))
+            G.add_edge(NNEdge(from_node=edge.from_node,
+                              from_idx=edge.from_idx, to_node=activation.name))
     if oprec['relu3'] is not None:
         mulqrec.out_qs = oprec['relu3'][1].out_qs
         del G.quantization[NodeId(oprec['relu3'][0])]
         for edge in G.out_edges(oprec['relu3'][0].name):
-            G.add_edge(NNEdge(to_node=edge.to_node, to_idx=edge.to_idx, from_node=activation.name))
+            G.add_edge(NNEdge(to_node=edge.to_node,
+                              to_idx=edge.to_idx, from_node=activation.name))
         G.remove(oprec['relu3'][0])
     else:
         for edge in G.out_edges(oprec['mul'][0].name):
-            G.add_edge(NNEdge(to_node=edge.to_node, to_idx=edge.to_idx, from_node=activation.name))
+            G.add_edge(NNEdge(to_node=edge.to_node,
+                              to_idx=edge.to_idx, from_node=activation.name))
 
     del G.quantization[NodeId(oprec['relu2'][0])]
     G.remove(oprec['relu2'][0])
@@ -180,7 +178,7 @@ class MatchFarHSigmoid(Matcher):
     NAME = 'match_far_hsigmoid'
     DESCRIPTION = 'Looks for quantized HSigmoid - [Relu] -> Add 3 -> Relu6 -> Mul 1/6 -> [Relu]'
 
-    def match(self, G: GraphView, set_identity: bool = True):
+    def match(self, G: GraphView, set_identity: bool = True, **kwargs):
         const_ops = [node for node in G.nodes()
                      if isinstance(node, MatrixMulParameters)
                      and any([isinstance(edge.from_node, ConstantInputParameters)
@@ -196,7 +194,8 @@ class MatchFarHSigmoid(Matcher):
             if len(mul_edge) == 1:
                 mul_edge = mul_edge[0]
                 if isinstance(mul_edge.to_node, ReluActivationParameters):
-                    oprec['relu3'] = (mul_edge.to_node, G.quantization[NodeId(mul_edge.to_node)])
+                    oprec['relu3'] = (mul_edge.to_node,
+                                      G.quantization[NodeId(mul_edge.to_node)])
             has_modified_graph = True
             process_rec(G, oprec)
 

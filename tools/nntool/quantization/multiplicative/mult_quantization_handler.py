@@ -14,23 +14,22 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import numpy as np
-from ..unified_quantization_handler import QuantizionHandler, options
-from .mult_quantization import MultQuantizationRecordBase
+from quantization.qtype import QType
+
+from ..unified_quantization_handler import QuantizionHandler, options, scheme
 
 
 #pylint: disable=abstract-method
 @options(
     {
-        'name': 'bits',
+        'name': 'sq_bits',
         'type': int,
         'choices': [8],
-        'help': 'bits for inputs and outputs',
+        'help': 'bits for inputs and outputs of scaled kernels',
         'default': 8
     })
+@scheme('SQ8')
 class MultQuantizionHandler(QuantizionHandler):
-    DEFAULT_QREC = MultQuantizationRecordBase
-    NAME = "SQ8"
-
     BITS_TO_DTYPE = {
         8: np.int8,
         16: np.int16
@@ -40,5 +39,25 @@ class MultQuantizionHandler(QuantizionHandler):
     def get_mult_opts(cls, **kwargs):
         force_out_qs = kwargs.get('force_out_qs', None)
         opts = kwargs.get('opts', {})
-        bits = opts.get('bits', 8)
+        bits = opts.get('sq_bits', 8)
         return force_out_qs, cls.BITS_TO_DTYPE[bits]
+
+    @classmethod
+    def force_symmetric(cls, in_qs, idx=None, dtype=None):
+        res_qs = []
+        for in_q_idx, in_q in enumerate(in_qs):
+            if in_qs is None or idx is not None and idx != in_q_idx:
+                res_qs.append(in_q)
+                continue
+            if in_q.is_asymmetric or dtype is not None and dtype != in_q.dtype:
+                if in_q.forced:
+                    return None
+                this_dtype = in_q.dtype if dtype is None else dtype
+                in_q = QType.from_min_max_sq(in_q.min_val, in_q.max_val,
+                                        dtype=this_dtype, forced=True)
+            res_qs.append(in_q)
+        return res_qs
+
+    @classmethod
+    def force_symmetric_and_dtype(cls, in_qs, dtype=None, idx=None):
+        return cls.force_symmetric(in_qs, idx=idx, dtype=dtype)

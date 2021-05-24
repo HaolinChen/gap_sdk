@@ -51,6 +51,11 @@ struct cluster_driver_data
     void *heap_start;
     uint32_t heap_size;
     pi_task_t *task_to_fc;
+    uint8_t hw_barrier_alloc;
+    #if !defined(__DISABLE_PRINTF__) && (defined(PRINTF_UART) || defined(PRINTF_SEMIHOST))
+    uint8_t *printf_buffer;
+    uint32_t printf_buffer_index[ARCHI_CLUSTER_NB_CORES];
+    #endif  /* __DISABLE_PRINTF__ && (PRINTF_UART || PRINTF_SEMIHOST) */
 };
 
 static inline void pi_cl_send_callback_to_fc(pi_callback_t *callback)

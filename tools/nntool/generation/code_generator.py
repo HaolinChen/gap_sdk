@@ -21,11 +21,12 @@ from graph.types import (ConcatParameters, ConstantInputParameters,
                          TransposeParameters)
 from graph.types.lstm import LSTMParameters
 from utils.node_id import NodeId
-from utils.symbolic.kernel_codegen import BasicKernel
+from expressions.symbolic.kernel_codegen import BasicKernel
 
-from generation.generators import RegisteredGeneratorsMixin
+from generation.generator_decorators import RegisteredGeneratorsMixin
 #pylint: disable=wildcard-import,unused-wildcard-import
 from generation.generators.globals.global_names import *
+from generation.generators import *
 from generation.name_cache import NameCache
 
 from .at_types.gen_ctrl import gen_graph_ctrl, gen_kernel_ctrl
@@ -303,20 +304,29 @@ class CodeGenerator(RegisteredGeneratorsMixin):
 
     def cnn_includes_generator(self):
         includes = []
-        if 'SQ8' in self.G.graph_identity.quantization_types:
+        if any(qrec.ktype == "scaled" for qrec in self.G.quantization.values()):
             includes.extend(['"CNN_Generators_SQ8.h"', '"RNN_Generators_SQ8.h"'])
-        if 'POW2' in self.G.graph_identity.quantization_types:
+        if any(qrec.ktype == "symmetric" for qrec in self.G.quantization.values()):
             includes.append('"CNN_Generators.h"')
+        if any(qrec.ktype == "float" for qrec in self.G.quantization.values()):
+            includes.extend(['"CNN_Generators_fp16.h"', '"RNN_Generators_fp16.h"'])
+        if any(qrec.cache.get('ne16') for qrec in self.G.quantization.values()):
+            includes.append('"CNN_Generators_NE16.h"')
         if self.G.has_resizer:
             includes.append('"ResizeGenerator.h"')
         return "".join(["#include %s\n" % include for include in includes])
 
     def cnn_kernels(self):
         kernels = []
-        if 'SQ8' in self.G.graph_identity.quantization_types:
+        if any(qrec.ktype == "scaled" for qrec in self.G.quantization.values()):
             kernels.append("\"CNN_BasicKernels_SQ8.h\"")
-        if 'POW2' in self.G.graph_identity.quantization_types:
+        if any(qrec.ktype == "symmetric" for qrec in self.G.quantization.values()):
             kernels.append("\"CNN_BasicKernels.h\"")
+        if any(qrec.ktype == "float" for qrec in self.G.quantization.values()):
+            kernels.append("\"CNN_BasicKernels_fp16.h\"")
+        if any(qrec.cache.get('ne16') for qrec in self.G.quantization.values()):
+            kernels.append('\"CNN_BasicKernels_NE16.h\"')
+            kernels.append('\"CNN_BasicKernels_HWC_SQ8.h\"')
         return kernels
 
     def extra_includes_generator(self, indent=0):
@@ -426,13 +436,18 @@ class CodeGenerator(RegisteredGeneratorsMixin):
 
     def load_basic_kernel_library(self, indent=0):
         code_block = CodeBlock(starting_indent=indent)
-        if 'SQ8' in self.G.graph_identity.quantization_types:
+        if any(qrec.ktype == "scaled" for qrec in self.G.quantization.values()):
             code_block.write("LoadCNN_SQ8_Library();")
             code_block.write("Load_RNN_SQ8_Library();")
             if self.G.has_ssd_postprocess:
                 code_block.write("LoadSSDLibrary();")
-        if 'POW2' in self.G.graph_identity.quantization_types:
+        if any(qrec.ktype == "symmetric" for qrec in self.G.quantization.values()):
             code_block.write("LoadCNNLibrary();")
+        if any(qrec.ktype == "float" for qrec in self.G.quantization.values()):
+            code_block.write("LoadCNNLibrary_fp16();")
+            code_block.write("LoadRNN_fp16_Library();")
+        if any(qrec.cache.get('ne16') for qrec in self.G.quantization.values()):
+            code_block.write("LoadCNN_NE16_SQ8_Library();")
         if self.G.has_resizer:
             code_block.write("LoadResizeLibrary();")
         return str(code_block)
@@ -445,14 +460,14 @@ class CodeGenerator(RegisteredGeneratorsMixin):
             cname = self.name_cache[node]['node']
             qrec = self.G.quantization[NodeId(node)]
             code_block.comment(cname)
-            if 'SQ8' in self.G.graph_identity.quantization_types:
+            if any(qrec.ktype == "scaled" for qrec in self.G.quantization.values()):
                 code_block.write("#define {}_OUT_SCALE\t{}".format(cname, qrec.out_qs[0].scale[0]))
                 qscales, qnorms, zero_point = qrec.out_qs[0].get_quantized_scale()
                 code_block.write("#define {}_OUT_QSCALE\t{}".format(cname, qscales[0]))
                 code_block.write("#define {}_OUT_QNORM\t{}".format(cname, qnorms[0]))
                 code_block.write("#define {}_OUT_ZERO_POINT\t{}".format(cname, zero_point[0]))
 
-            if 'POW2' in self.G.graph_identity.quantization_types:
+            if any(qrec.ktype == "symmetric" for qrec in self.G.quantization.values()):
                 for out_q in qrec.out_qs:
                     code_block.write("#define {}_Q\t{}".format(cname, out_q.q))
         return str(code_block)
@@ -467,7 +482,7 @@ class CodeGenerator(RegisteredGeneratorsMixin):
             basic_kernel = self.expressions_kernel_cache.get(node)
             if not basic_kernel:
                 qrec = self.G.quantization[NodeId(node)]
-                basic_kernel = BasicKernel(qrec.qfunc_col,
+                basic_kernel = BasicKernel(qrec.cache['qfunc_col'],
                                            [inp.name for inp in node.constant_inputs])
                 self.expressions_kernel_cache[node] = basic_kernel
             yield node, basic_kernel
@@ -487,6 +502,13 @@ class CodeGenerator(RegisteredGeneratorsMixin):
         for node, basic_kernel in self.expressions_foreach_basic_kernel():
             _, arg_name = self.expressions_get_names(node)
             basic_kernel.kernel_arg_type_codegen(arg_name, code=code_block)
+        return str(code_block)
+
+    def expressions_kernel_includes_generator(self):
+        code_block = CodeBlock(starting_indent=0)
+        includes = set.union(*[basic_kernel.func_col.c_header_set for node, basic_kernel in self.expressions_foreach_basic_kernel()])
+        for include in includes:
+            code_block.write('#include {}', include)
         return str(code_block)
 
     def expressions_kernel_prototypes_generator(self, indent=0):

@@ -72,6 +72,7 @@ class Concatenation(ConstantMixin, BackendHandler):
                 G.add_edge(NNEdge(from_node=inp[0], to_node=params, from_idx=inp[1], to_idx=idx))
         if opts.get('load_quantization'):
             G.quantization[NodeId(params)] = cls.load_tf_quantization(node.input, node.output)
+        cls.fuse_activation(node_opts, node.name, params, **kwargs)
         all_nodes[node.output[0]] = (params, 0, ProvisionalDim(pout_shape))
         return params
 

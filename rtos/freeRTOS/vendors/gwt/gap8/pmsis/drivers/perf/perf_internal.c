@@ -165,7 +165,7 @@ void __pi_perf_cl_reset()
     uint8_t cid = pi_core_id();
     if (cid == 0)
     {
-        if (cl_perf_val[cid].perf_mask & 1 << PI_PERF_CYCLES)
+        if (cl_perf_val[cid].perf_mask & (1 << PI_PERF_CYCLES))
         {
             pi_timer_reset(PERF_TIMER_CL);
         }

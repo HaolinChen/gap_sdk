@@ -14,17 +14,22 @@
 
 import logging
 
-from generation.at_types.at_params import (NO_ACTIVATION, gen_active_at_params)
+from generation.at_types.at_params import NO_ACTIVATION, gen_active_at_params
 from generation.at_types.gen_ctrl import GenCtrl
 from generation.code_block import CodeBlock
-from generation.generators.generator_decorators import generation_function, QREC_MULT8
-from graph.types import MatrixMulParameters, ActivationFusion
+from generation.generator_decorators import (QREC_MULT8,
+                                                        generation_function)
+from graph.types import ActivationFusion, MatrixMulParameters
 
-from ..autotiler_kernel import AutotilerKernel
+from ..autotiler_kernel import (AutotilerKernel, gen_include_paths,
+                                gen_includes, gen_sources,
+                                kernel_include_paths, kernel_includes,
+                                kernel_sources)
 
 LOG = logging.getLogger("nntool." + __name__)
 
 MAT_VECT_MUL_OPER = "KOP_MATVECTMUL"
+
 
 @generation_function("kernels", (MatrixMulParameters, ActivationFusion), qrec_types=(QREC_MULT8, ))
 def mat_vect_mult_kernel_generator(gen, node, qrec, in_eparams, out_eparams, cname):
@@ -40,6 +45,7 @@ def mat_vect_mult_kernel_generator(gen, node, qrec, in_eparams, out_eparams, cna
                                         force_relu=gen.force_relu))
     return True
 
+
 def gen_mat_vect_mul_sq8(code_block, cname, ctrl, feat, width, height, act_oper):
     code_block.write('CNN_TensorVectMultAct_SQ8("{}", {}, {}, {}, {}, {}, {});'.format(cname, ctrl,
                                                                                        feat, width,
@@ -47,6 +53,22 @@ def gen_mat_vect_mul_sq8(code_block, cname, ctrl, feat, width, height, act_oper)
                                                                                        MAT_VECT_MUL_OPER,
                                                                                        act_oper))
 
+
+@kernel_sources(
+    '$(TILER_CNN_KERNEL_PATH_SQ8)/CNN_MatAlgebra_SQ8.c')
+@kernel_include_paths(
+    '$(TILER_CNN_KERNEL_PATH)',
+    '$(TILER_CNN_KERNEL_PATH_SQ8)')
+@kernel_includes(
+    'CNN_BasicKernels_SQ8.h')
+@gen_sources(
+    '$(TILER_CNN_GENERATOR_PATH)/CNN_Generator_Util.c',
+    '$(TILER_CNN_GENERATOR_PATH_SQ8)/CNN_Generators_SQ8.c')
+@gen_include_paths(
+    '$(TILER_CNN_GENERATOR_PATH)',
+    '$(TILER_CNN_GENERATOR_PATH_SQ8)')
+@gen_includes(
+    'CNN_Generators_SQ8.h')
 class MatVectMulKernel(AutotilerKernel):
     def __init__(self, node_name, cname, tens_vect_mul_params, act_params, at_ver=3, gen_ctrl=None, force_relu=True):
         if gen_ctrl is None:
@@ -60,15 +82,23 @@ class MatVectMulKernel(AutotilerKernel):
         self.at_ver = at_ver
 
         if act_params is not None:
-            self.at_act_params = gen_active_at_params(act_params, force_relu=force_relu)
+            self.at_act_params = gen_active_at_params(
+                act_params, force_relu=force_relu)
         else:
             self.at_act_params = NO_ACTIVATION
 
         self.tens_vect_mul_params = tens_vect_mul_params
-        dimensions = tens_vect_mul_params.in_dims[0]
-        self.feat_dim = dimensions[0]
-        self.width = dimensions[1]
-        self.height = dimensions[2]
+        if tens_vect_mul_params.in_dims[0] == tens_vect_mul_params.in_dims[1]:
+            # broadcast matrix * matrix
+            self.feat_dim = tens_vect_mul_params.in_dims[0].size()
+            self.height = 1
+            self.width = 1
+        else:
+            # probably need more logic here to handle
+            dimensions = tens_vect_mul_params.in_dims[0]
+            self.feat_dim = dimensions[0]
+            self.width = dimensions[1]
+            self.height = dimensions[2]
 
     def code(self, code_block=None):
         if code_block is None:

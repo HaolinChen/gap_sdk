@@ -30,7 +30,7 @@ class RemoveNoOPs(Matcher):
                 isinstance(node, TransposeParameters) and node.transpose_in is None or
                 isinstance(node, ReshapeParameters) and node.old_shape == node.shape)
 
-    def match(self, G: GraphView, set_identity: bool = True) -> bool:
+    def match(self, G: GraphView, set_identity: bool = True, **kwargs) -> bool:
         has_modified_graph = False
         for node in [node for node in G.nodes() if self.node_does_nothing(node)]:
             has_modified_graph = True

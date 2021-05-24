@@ -30,6 +30,7 @@ MODEL_LIB_POW2 += $(NNTOOL_KERNELS_PATH)/norm_transpose.c
 MODEL_LIB_INCLUDE_POW2 = -I$(NNTOOL_KERNELS_PATH) -I$(TILER_CNN_KERNEL_PATH) -I$(NNTOOL_KERNELS_PATH)
 MODEL_GEN_POW2 += $(TILER_CNN_GENERATOR_PATH)/CNN_Generator_Util.c
 MODEL_GEN_POW2 += $(TILER_CNN_GENERATOR_PATH)/CNN_Generators.c
+MODEL_GEN_POW2 += $(TILER_CNN_GENERATOR_PATH)/CNN_Copy_Generators.c
 MODEL_GEN_POW2 += $(NNTOOL_GENERATOR_PATH)/nntool_extra_generators.c
 MODEL_GEN_INCLUDE_POW2 = -I$(TILER_CNN_GENERATOR_PATH) -I$(NNTOOL_GENERATOR_PATH)
 
@@ -39,7 +40,7 @@ APP_SRCS += Cifar10.c Cifar10Kernels.c \
             
 APP_INC += $(TILER_INC) $(TILER_EMU_INC) $(TILER_CNN_KERNEL_PATH)
 
-APP_CFLAGS += -O2 -mno-memcpy -fno-tree-loop-distribute-patterns  -fdata-sections -ffunction-sections
+APP_CFLAGS += -O3 -mno-memcpy -fno-tree-loop-distribute-patterns  -fdata-sections -ffunction-sections
 # The generated code outputs a maybe-uninitialized error which is rather difficult to suppress
 # in a clean way.
 APP_CFLAGS += -w -Wno-maybe-uninitialized -Wno-unused-but-set-variable $(COEF_FLAG)

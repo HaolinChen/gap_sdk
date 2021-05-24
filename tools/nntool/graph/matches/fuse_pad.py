@@ -25,6 +25,30 @@ from .matcher import Matcher
 
 LOG = logging.getLogger("nntool." + __name__)
 
+def expand_padding(from_shape, to_shape, padding):
+    """ Expands padding with new axes added by reshape. Will fail if the reshape
+    is doing more than just inserting 1s"""
+    from_shape = tuple(from_shape)
+    to_shape = tuple(to_shape)
+    if from_shape == to_shape:
+        return padding
+    from_idx = 0
+    to_idx = 0
+    new_padding = []
+    while to_idx < len(to_shape) or from_idx < len(from_shape):
+        if from_idx < len(from_shape) and to_idx < len(to_shape) and from_shape[from_idx] == to_shape[to_idx]:
+            new_padding.append(padding[from_idx])
+            from_idx += 1
+            to_idx += 1
+        elif to_idx < len(to_shape) and to_shape[to_idx] == 1:
+            new_padding.append((0, 0))
+            to_idx += 1
+        elif from_idx < len(from_shape) and from_shape[from_idx] == 1 and sum(padding[from_idx]) == 0:
+            from_idx += 1
+        else:
+            return None
+    return new_padding if from_idx == len(from_shape) and to_idx == len(to_shape) else None
+
 
 class MatchFusePad(Matcher):
     NAME = 'fuse_pad'
@@ -35,82 +59,99 @@ class MatchFusePad(Matcher):
         return Dim.unnamed([dim - sum(padding[idx]) for idx, dim in enumerate(shape)])
 
     @staticmethod
-    def find_conv(G, node):
+    def find_conv(G, node, padding, reshapes=None):
+        """ Search for filterlike nodes passing through potential single edge reshapes"""
+        if reshapes is None:
+            reshapes = []
         if isinstance(node, FilterLikeParameters):
-            return node, False
+            return node, padding, reshapes
         if isinstance(node, ReshapeParameters):
             out_edges = G.out_edges(node.name)
-            if len(out_edges) == 1 and isinstance(out_edges[0].to_node, FilterLikeParameters):
-                return out_edges[0].to_node, True
-        return None, False
+            # could handle multi edge in the future
+            if len(out_edges) == 1:
+                new_padding = expand_padding(node.old_shape.shape, node.shape.shape, padding)
+                if new_padding is None:
+                    LOG.warning(
+                        'pad before filter found but reshape %s is not allowing it to be fused', node.name)
+                    return None, None, None
+                out_edge = out_edges[0]
+                # keep track of the reshapes we passed through
+                reshapes.append((node, padding, new_padding))
+                return MatchFusePad.find_conv(G, out_edge.to_node, new_padding, reshapes)
+            else:
+                LOG.warning(
+                    'pad before filter found but reshape %s is not allowing it to be fused - multi edge', node.name)
 
-    def match(self, G: GraphView, set_identity: bool = True) -> bool:
+        return None, None, None
+
+    def match(self, G: GraphView, set_identity: bool = True, **kwargs) -> bool:
         has_modified_graph = False
         for pad_params in [pad for pad in G.nodes() if isinstance(pad, PadParameters)]:
             pad_in_edges = G.in_edges(pad_params.name)
             pad_out_edges = G.out_edges(pad_params.name)
             dont_delete = False
-            for pad_out_edge in pad_out_edges:
-                filter_like_node, is_1d = self.find_conv(G, pad_out_edge.to_node)
-                if not filter_like_node:
-                    dont_delete = True
-                    continue
-                if not filter_like_node.in_dims_hint or not filter_like_node.in_dims_hint[0]:
-                    raise ValueError(f"filter {filter_like_node.name} doesn't have a input hint")
-                in_hint = filter_like_node.in_dims_hint[0]
-                if is_1d:
-                    if len(pad_params.padding) != 2:
-                        LOG.warning("pad node %s is applied to 1d convolution but has length %s",
-                                    pad_params.name,
-                                    len(pad_params.padding))
-                        dont_delete = True
-                        continue
-                    expanded_padding = [pad_params.padding[0], (0, 0), pad_params.padding[1]]
-                else:
-                    if len(pad_params.padding) != 3:
-                        LOG.warning("pad node %s is applied to 2d convolution but has length %s",
-                                    pad_params.name,
-                                    len(pad_params.padding))
-                        dont_delete = True
-                        continue
-                    expanded_padding = pad_params.padding
-
-                hinted_pad = {in_hint[idx]: pad for idx,
-                              pad in enumerate(expanded_padding) if sum(pad) > 0}
-                key_set = set(hinted_pad.keys())
-                key_set -= set(['h', 'w'])
-                if len(key_set) > 0:
-                    dont_delete = True
-                    LOG.error("node %s has padding on axes %s and cannot be fused with filter %s",
-                              pad_params.name, key_set, filter_like_node.name)
-                    continue
-                if any(pval != 0 for val in pad_params.pad_vals for pval in val):
-                    dont_delete = True
-                    LOG.error("node %s has non zero pad values and cannot be fused with filter %s",
-                              pad_params.name, filter_like_node.name)
-                    continue
-
-                LOG.info("adding padding from: %s to %s filter: %s",
-                         pad_params.name, is_1d and "1D" or "2D", filter_like_node.name)
-
-                for key in ['h', 'w']:
-                    if key not in hinted_pad:
-                        hinted_pad[key] = (0, 0)
-
-                filter_like_node.padding = PadDim(*(list(hinted_pad['h']) + list(hinted_pad['w'])))
-                filter_like_node.pad_type = "zero"
-                has_modified_graph = True
-                G.remove_edge(pad_out_edge)
-                if is_1d:
-                    reshape_node = pad_out_edge.to_node
-                    reshape_node.old_shape = self.remove_padding(
-                        reshape_node.old_shape, pad_params.padding)
-                    reshape_node.shape = self.remove_padding(reshape_node.shape, expanded_padding)
-                for in_edge in pad_in_edges:
+            if len(pad_in_edges) == 1 and all(sum(padding) == 0 for padding in pad_params.padding):
+                LOG.info("removing zero padding node %s",
+                         pad_params.name)
+                G.remove(pad_params)
+                if G.quantization:
+                    G.quantization.remove_node(pad_params)
+                dont_delete = True
+                in_edge = pad_in_edges[0]
+                for out_edge in pad_out_edges:
                     G.add_edge(NNEdge(from_node=in_edge.from_node,
-                                      to_node=pad_out_edge.to_node,
+                                      to_node=out_edge.to_node,
                                       from_idx=in_edge.from_idx,
-                                      to_idx=pad_out_edge.to_idx))
+                                      to_idx=out_edge.to_idx))
+            else:
+                for pad_out_edge in pad_out_edges:
+                    filter_like_node, expanded_padding, reshapes = self.find_conv(G, pad_out_edge.to_node, pad_params.padding)
+                    if not filter_like_node:
+                        dont_delete = True
+                        continue
+                    if not filter_like_node.in_dims_hint or not filter_like_node.in_dims_hint[0]:
+                        raise ValueError(
+                            f"filter {filter_like_node.name} doesn't have a input hint")
+                    in_hint = filter_like_node.in_dims_hint[0]
+
+                    hinted_pad = {in_hint[idx]: pad for idx,
+                                  pad in enumerate(expanded_padding) if sum(pad) > 0}
+                    key_set = set(hinted_pad.keys())
+                    key_set -= set(['h', 'w'])
+                    if len(key_set) > 0:
+                        dont_delete = True
+                        LOG.error("node %s has padding on axes %s and cannot be fused with filter %s",
+                                  pad_params.name, key_set, filter_like_node.name)
+                        continue
+                    if any(pval != 0 for val in pad_params.pad_vals for pval in val):
+                        dont_delete = True
+                        LOG.error("node %s has non zero pad values and cannot be fused with filter %s",
+                                  pad_params.name, filter_like_node.name)
+                        continue
+
+                    LOG.info("adding padding from: %s to filter: %s - has %s reshapes",
+                             pad_params.name, filter_like_node.name, len(reshapes))
+
+                    for key in ['h', 'w']:
+                        if key not in hinted_pad:
+                            hinted_pad[key] = (0, 0)
+
+                    filter_like_node.padding = PadDim(
+                        *(list(hinted_pad['h']) + list(hinted_pad['w'])))
+                    filter_like_node.pad_type = "zero"
+                    has_modified_graph = True
+                    G.remove_edge(pad_out_edge)
+                    for reshape_node, old_padding, new_padding in reshapes:
+                        reshape_node.old_shape = self.remove_padding(
+                            reshape_node.old_shape, old_padding)
+                        reshape_node.shape = self.remove_padding(
+                            reshape_node.shape, new_padding)
+
+                    for in_edge in pad_in_edges:
+                        G.add_edge(NNEdge(from_node=in_edge.from_node,
+                                          to_node=pad_out_edge.to_node,
+                                          from_idx=in_edge.from_idx,
+                                          to_idx=pad_out_edge.to_idx))
 
             if not dont_delete:
                 G.remove(pad_params)

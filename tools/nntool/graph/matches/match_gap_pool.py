@@ -15,72 +15,139 @@
 
 import logging
 
-from graph.types import (ActivationParameters, ConvFusionParameters,
-                         PoolingParameters)
-from quantization.symmetric.symmetric_quantization import (
-    SymmetricQuantizationRecord, SymmetricScalableFilterQuantizationRecord)
-from quantization.multiplicative.mult_quantization import (
-    MultQuantizationRecord, MultScalableFilterQuantizationRecord)
-from quantization.float32.float32_quantization import (
-    Float32QuantizationRecord, Float32ScalableFilterQuantizationRecord)
-from utils.graph import Edge, GraphView, MatchNode
+from graph.types import (ConvFusionParameters, HSigmoidActivationParameters,
+                         HSwishActivationParameters, LeakyActivationParameters,
+                         PoolingParameters, ReluActivationParameters,
+                         SigmoidActivationParameters)
+from graph.types.base import NNEdge
+from quantization.new_qrec import QRec
+from utils.graph import GraphView
 from utils.node_id import NodeId
 
-from .matcher import DefaultMatcher
+from .matcher import Matcher
 
 LOG = logging.getLogger("nntool." + __name__)
 
 
-class MatchGapPool(DefaultMatcher):
+VALID_ACTIVATIONS_SQ8 = (
+    ReluActivationParameters,
+    LeakyActivationParameters,
+    HSigmoidActivationParameters,
+    HSwishActivationParameters,
+    SigmoidActivationParameters
+)
+
+VALID_ACTIVATIONS_SQ8_WO_POOL = VALID_ACTIVATIONS_SQ8
+
+VALID_ACTIVATIONS_POW2 = (
+    ReluActivationParameters,
+    LeakyActivationParameters,
+    HSigmoidActivationParameters,
+    HSwishActivationParameters
+    # SigmoidActivationParameters
+)
+
+VALID_ACTIVATIONS_POW2_WO_POOL = (
+    ReluActivationParameters,
+)
+
+class FusionMatch():
+    def __init__(self, valid_activations, valid_activations_wo_pool) -> None:
+        self.pool = None
+        self.active = None
+        self.valid_activations = valid_activations
+        self.valid_activations_wo_pool = valid_activations_wo_pool
+        self.order = []
+
+    def add_node(self, params):
+        if isinstance(params, PoolingParameters):
+            if self.pool:
+                return None
+            self.order.append(params)
+            self.pool = params
+            return self
+        elif (self.pool and isinstance(params, self.valid_activations)) or isinstance(params, self.valid_activations_wo_pool):
+            if self.active:
+                return None
+            self.order.append(params)
+            self.active = params
+            return self
+        else:
+            return None
+
+    @property
+    def fusion_type(self):
+        return '_'.join(['pool' if isinstance(params, PoolingParameters)
+                         else 'active' for params in self.order])
+
+
+class MatchGapPool(Matcher):
     NAME = 'fuse_gap_pool'
     DESCRIPTION = 'Fuse pooling layers and activations to match GAP AutoTiler operations'
 
-    def valid_pool(self, node):
-        del node
-        # TODO - Add specific pool parameter checking here
-        return True
+    def get_node_list(self, G, params, valid_activations, valid_activations_wo_pool, result=None):
+        if result is None:
+            result = FusionMatch(valid_activations, valid_activations_wo_pool)
+        if not result.add_node(params):
+            return result
+        out_edges = G.out_edges(params.name)
+        if len(out_edges) > 1:
+            return result
+        return self.get_node_list(G, out_edges[0].to_node, valid_activations, valid_activations_wo_pool, result=result)
 
-    def valid_activation(self, node):
-        del node
-        # TODO - Add specific pool parameter checking here
-        return True
+    def match(self, G: GraphView, set_identity: bool = True, **kwargs):
+        has_modified_graph = False
+        group_identity = kwargs.get('group_identity')
+        if group_identity == 'pow2_match_group':
+            valid_activations = VALID_ACTIVATIONS_POW2
+            valid_activations_wo_pool = VALID_ACTIVATIONS_POW2_WO_POOL
+        else:
+            valid_activations = VALID_ACTIVATIONS_SQ8
+            valid_activations_wo_pool = VALID_ACTIVATIONS_SQ8_WO_POOL
+        for pool_node in G.nodes(node_classes=PoolingParameters):
+            node_list = self.get_node_list(G, pool_node, valid_activations, valid_activations_wo_pool)
+            if node_list is None or len(node_list.order) < 2:
+                continue
+            LOG.info("fusing nodes %s", ",".join(
+                (node.name for node in node_list.order)))
+            has_modified_graph = True
+            subgraph = GraphView()
+            last_node = None
+            for node in node_list.order:
+                if last_node is not None:
+                    subgraph.add_edge(
+                        NNEdge(from_node=last_node, to_node=node))
+                last_node = node
+            input_mapping = [[(node_list.pool, 0)]]
+            output_mapping = [(last_node, 0)]
+            pnode = ConvFusionParameters(
+                node_list.pool.name + '_fusion',
+                fusion_type=node_list.fusion_type,
+                subgraph=subgraph,
+                input_mapping=input_mapping,
+                output_mapping=output_mapping)
+            if G.quantization:
+                # if there are quantization stats then clear them. They need to be created again
+                G.quantization.stats = None
+                qrecs = G.quantization.get_all(pnode.contained_nodes())
+                if qrecs:
+                    prec = QRec.copy_ktype(
+                        qrecs[0], in_qs=qrecs[0].in_qs, out_qs=qrecs[-1].out_qs)
+                    for node in pnode.contained_nodes():
+                        G.quantization.move_to_fusion(node, pnode)
+                    G.quantization[NodeId(pnode)] = prec
+            in_edges = G.in_edges(node_list.pool.name)
+            out_edges = G.out_edges(last_node.name)
+            for node in node_list.order:
+                G.remove(node)
+            for edge in in_edges:
+                G.add_edge(NNEdge(edge.from_node, pnode,
+                                  from_idx=edge.from_idx, to_idx=edge.to_idx))
+            for edge in out_edges:
+                G.add_edge(NNEdge(pnode, edge.to_node,
+                                  from_idx=edge.from_idx, to_idx=edge.to_idx))
 
-    def match_function(self, G: GraphView):
-        sub = GraphView()
-        sub.add_node(MatchNode('0',
-                               matcher=lambda node:
-                               isinstance(node, PoolingParameters) and
-                               self.valid_pool(node)))
-        sub.add_node(MatchNode('1', matcher=lambda node:
-                               isinstance(node, ActivationParameters) and
-                               self.valid_activation(node)))
-        sub.add_edge(Edge('0', '1'))
-        return G.match_fragment(sub)
+        if set_identity:
+            self.set_identity(G)
 
-    def replace_function(self, G: GraphView, subgraph: GraphView):
-        step = 0
-        for node in subgraph.nodes():
-            node.step_idx = step
-            step = step + 1
-            if isinstance(node, PoolingParameters):
-                pool_name = node.name + "_fusion"
-                break
-        LOG.debug("fusing nodes %s", ",".join(
-            (node.name for node in subgraph.nodes())))
-        # simple node order is necessary because nodes() will not necessarily
-        # be in order
-        pnode = ConvFusionParameters(pool_name, fusion_type="pool_active", subgraph=subgraph)
-        if G.quantization:
-            qrecs = G.quantization.get_all(pnode.contained_nodes())
-            if qrecs:
-                if isinstance(qrecs[0], (SymmetricQuantizationRecord, SymmetricScalableFilterQuantizationRecord)):
-                    prec = SymmetricQuantizationRecord(
-                        in_qs=qrecs[0].in_qs, out_qs=qrecs[-1].out_qs)
-                elif isinstance(qrecs[0], (MultQuantizationRecord, MultScalableFilterQuantizationRecord)):
-                    prec = MultQuantizationRecord(in_qs=qrecs[0].in_qs, out_qs=qrecs[-1].out_qs)
-                elif isinstance(qrecs[0], (Float32QuantizationRecord, Float32ScalableFilterQuantizationRecord)):
-                    prec = Float32QuantizationRecord(in_qs=qrecs[0].in_qs, out_qs=qrecs[-1].out_qs)
-                for node in pnode.contained_nodes():
-                    G.quantization.move_to_fusion(node, pnode)
-                G.quantization[NodeId(pnode)] = prec
-        return pnode, None, None
+        return has_modified_graph

@@ -68,9 +68,12 @@ class Slice(ConstantMixin, BackendHandler):
         params = StridedSliceParameters(
             valid_name, act_slice=slices, out_shape=shape)
         if cls.is_constant(x):
-            logger.info("reducing %s to a constant", valid_name)
             x_val = cls.get_constant(x)
             x_val = params.numpy_slice(x_val)
+            if x_val.size < 10:
+                logger.info("reducing %s to a constant %s", valid_name, x_val)
+            else:
+                logger.info("reducing %s to a constant", valid_name)
             params = ConstantInputParameters(valid_name, dims=Dim.unnamed(x_val.shape), value=x_val, constant_store=G.constant_store)
         else:
             G.add_edge(NNEdge(from_node=x[0], to_node=params, from_idx=x[1], to_idx=0))

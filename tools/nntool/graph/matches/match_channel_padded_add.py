@@ -15,14 +15,10 @@
 
 import logging
 
-from graph.types import (MatrixAddParameters, ActivationParameters, PadParameters, PaddedAddFusionParameters)
+from graph.types import (ActivationParameters, MatrixAddParameters,
+                         PaddedAddFusionParameters, PadParameters)
 from graph.types.base import NNEdge
-from quantization.float32.float32_quantization import (
-    Float32QuantizationRecord, Float32ScalableFilterQuantizationRecord)
-from quantization.multiplicative.mult_quantization import (
-    MultQuantizationRecord, MultScalableFilterQuantizationRecord)
-from quantization.symmetric.symmetric_quantization import (
-    SymmetricQuantizationRecord, SymmetricScalableFilterQuantizationRecord)
+from quantization.new_qrec import QRec
 from utils.graph import GraphView
 from utils.node_id import NodeId
 
@@ -81,21 +77,24 @@ class MatchPadAddAct(Matcher):
             return result
         return self.get_node_list(G, out_edges[0].to_node, result=result)
 
-    def match(self, G: GraphView, set_identity: bool = True):
+    def match(self, G: GraphView, set_identity: bool = True, **kwargs):
         has_modified_graph = False
         for pad_node in [params for params in G.nodes() if isinstance(params, PadParameters)]:
             node_list = self.get_node_list(G, pad_node)
             if node_list is None or len(node_list.order) < 2:
                 continue
-            LOG.info("fusing nodes %s", ",".join((node.name for node in node_list.order)))
+            LOG.info("fusing nodes %s", ",".join(
+                (node.name for node in node_list.order)))
             has_modified_graph = True
             subgraph = GraphView()
             padded_input_idx = G.out_edges(node_list.pad.name)[0].to_idx
-            subgraph.add_edge(NNEdge(from_node=node_list.pad, to_node=node_list.add, to_idx=padded_input_idx))
+            subgraph.add_edge(NNEdge(from_node=node_list.pad,
+                                     to_node=node_list.add, to_idx=padded_input_idx))
             last_node = node_list.add
             node_list.add.force_quantized_index = 0
             if node_list.active:
-                subgraph.add_edge(NNEdge(from_node=node_list.add, to_node=node_list.active))
+                subgraph.add_edge(
+                    NNEdge(from_node=node_list.add, to_node=node_list.active))
                 last_node = node_list.active
             if padded_input_idx == 0:
                 input_mapping = [[(node_list.pad, 0)], [(node_list.add, 1)]]
@@ -111,30 +110,29 @@ class MatchPadAddAct(Matcher):
                 output_mapping=output_mapping)
             if G.quantization:
                 qrecs = G.quantization.get_all(pnode.contained_nodes())
+                # if there are quantization stats then clear them. They need to be created again
+                G.quantization.stats = None
                 if qrecs:
-                    prec = None
-                    if isinstance(qrecs[0], (SymmetricQuantizationRecord, SymmetricScalableFilterQuantizationRecord)):
-                        prec = SymmetricQuantizationRecord(
-                            in_qs=qrecs[0].in_qs, out_qs=qrecs[-1].out_qs)
-                    elif isinstance(qrecs[0], (MultQuantizationRecord, MultScalableFilterQuantizationRecord)):
-                        prec = MultQuantizationRecord(in_qs=qrecs[0].in_qs, out_qs=qrecs[-1].out_qs)
-                    elif isinstance(qrecs[0], (Float32QuantizationRecord, Float32ScalableFilterQuantizationRecord)):
-                        prec = Float32QuantizationRecord(
-                            in_qs=qrecs[0].in_qs, out_qs=qrecs[-1].out_qs)
+                    prec = QRec.copy_ktype(
+                        qrecs[0], in_qs=qrecs[0].in_qs, out_qs=qrecs[-1].out_qs)
                     for node in pnode.contained_nodes():
                         G.quantization.move_to_fusion(node, pnode)
                     G.quantization[NodeId(pnode)] = prec
             if padded_input_idx == 0:
-                in_edges = G.in_edges(node_list.pad.name) + G.indexed_in_edges(node_list.add.name)[1::]
+                in_edges = G.in_edges(node_list.pad.name) + \
+                    G.indexed_in_edges(node_list.add.name)[1::]
             else:
-                in_edges = G.indexed_in_edges(node_list.add.name)[0:1:] + G.in_edges(node_list.pad.name)
+                in_edges = G.indexed_in_edges(node_list.add.name)[
+                    0:1:] + G.in_edges(node_list.pad.name)
             out_edges = G.out_edges(last_node.name)
             for node in node_list.order:
                 G.remove(node)
             for edge in in_edges:
-                G.add_edge(NNEdge(edge.from_node, pnode, from_idx=edge.from_idx, to_idx=edge.to_idx))
+                G.add_edge(NNEdge(edge.from_node, pnode,
+                                  from_idx=edge.from_idx, to_idx=edge.to_idx))
             for edge in out_edges:
-                G.add_edge(NNEdge(pnode, edge.to_node, from_idx=edge.from_idx, to_idx=edge.to_idx))
+                G.add_edge(NNEdge(pnode, edge.to_node,
+                                  from_idx=edge.from_idx, to_idx=edge.to_idx))
 
         if set_identity:
             self.set_identity(G)

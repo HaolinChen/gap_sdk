@@ -41,6 +41,8 @@
 void cl_wait_task(uint8_t *done);
 void cl_notify_task_done(uint8_t *done, uint8_t cluster_id);
 
+#define PI_INLINE_CL_TEAM_0 static inline
+
 /* pmsis_api includes. */
 #include "pmsis/cluster/cl_malloc.h"
 #include "pmsis/cluster/cl_pmsis_api.h"
@@ -53,14 +55,15 @@ void cl_notify_task_done(uint8_t *done, uint8_t cluster_id);
 /* DMA. */
 #include "pmsis/cluster/dma/cl_dma.h"
 
+/* PMSIS cluster data includes. */
+#include "pmsis/implem/cluster/cluster_data.h"
+
 /* PMSIS cluster drivers includes. */
+#include "pmsis/implem/cluster/team/cl_team_internal.h"
 #include "pmsis/implem/cluster/delegate/uart/uart_cl_internal.h"
 #include "pmsis/implem/cluster/delegate/hyperbus/hyperbus_cl_internal.h"
 #include "pmsis/implem/cluster/malloc/cl_malloc_internal.h"
 /* DMA. */
 #include "pmsis/implem/cluster/dma/cl_dma.h"
-
-/* PMSIS cluster data includes. */
-#include "pmsis/implem/cluster/cluster_data.h"
 
 #endif  /* __PMSIS_IMPLEM_CLUSTER_CLUSTER_H__ */

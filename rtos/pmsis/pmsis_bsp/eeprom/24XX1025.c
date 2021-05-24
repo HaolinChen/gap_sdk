@@ -183,11 +183,18 @@ static void bsp_24xx1025_enqueue_copy(eeprom_t *eeprom, uint32_t eeprom_addr, vo
     }
     else
     {
+#if defined(PMSIS_DRIVERS) || defined(__PULPOS2__)
         // Save the copy to restore it later on
         task->data[0] = (int)eeprom;
         task->data[1] = (int)data;
         task->data[2] = size;
         task->data[3] = is_write;
+#else
+        task->implem.data[0] = (int)eeprom;
+        task->implem.data[1] = (int)data;
+        task->implem.data[2] = size;
+        task->implem.data[3] = is_write;
+#endif
 
         if (eeprom->waiting_first)
             eeprom->waiting_last->next = task;

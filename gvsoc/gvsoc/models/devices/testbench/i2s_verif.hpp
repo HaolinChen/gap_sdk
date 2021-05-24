@@ -52,11 +52,13 @@ public:
     bool frame_active;
     int  current_ws_delay;
     int  active_slot;
+    bool zero_delay_start;
     int  pending_bits;
 
     bool is_pdm;
     bool is_full_duplex;
 
+    bool clk_active;
     int64_t clk_period;
     bool is_ext_clk;
     int clk;
@@ -68,6 +70,8 @@ public:
     int ws_count;
     int ws_value;
     bool pdm_lanes_is_out[2];
+    int64_t prev_frame_start_time;
+    int64_t sampling_period;
 
     std::vector<Slot *> slots;
 };

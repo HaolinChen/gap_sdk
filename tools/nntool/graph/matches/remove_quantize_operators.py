@@ -12,18 +12,20 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-from graph.types.input_output import InputParameters, OutputParameters
 import logging
 from copy import deepcopy
 
 import numpy as np
+from bfloat16 import bfloat16
 from graph.matches.matcher import Matcher
 from graph.types.base import InsensitiveToQuantization, NNEdge
+from graph.types.input_output import InputParameters, OutputParameters
 from graph.types.others import QuantizeParameters
 from utils.graph import GraphView
 from utils.node_id import NodeId
 
 LOG = logging.getLogger("nntool." + __name__)
+
 
 class RemoveQuantizeOperators(Matcher):
     NAME = "remove_quantize_operators"
@@ -71,12 +73,12 @@ class RemoveQuantizeOperators(Matcher):
                 qrec.out_qs[0] = deepcopy(qtype)
         return True
 
-    def match(self, G: GraphView, set_identity: bool = True):
+    def match(self, G: GraphView, set_identity: bool = True, **kwargs):
         nodes_removed = []
         modified_graph = False
         for node in G.nodes(node_classes=QuantizeParameters):
-            if issubclass(node.from_qtype.dtype, np.floating):
-                if issubclass(node.to_qtype.dtype, np.floating):
+            if issubclass(node.from_qtype.dtype, (np.floating, bfloat16)):
+                if issubclass(node.to_qtype.dtype, (np.floating, bfloat16)):
                     LOG.warning(
                         'node %s quantizes from floating type to floating type and cannot directly be removed',
                         node.name)

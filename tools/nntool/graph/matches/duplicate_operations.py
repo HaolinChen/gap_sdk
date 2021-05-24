@@ -9,15 +9,19 @@
 # but WITHOUT ANY WARRANTY; without even the implied warranty of
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU Affero General Public License for more details.
-import logging
-from itertools import groupby
-from functools import partial
-
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+import logging
+from functools import partial
+from itertools import groupby
+from copy import deepcopy
+import numpy as np
 from graph.matches.matcher import Matcher
 from graph.types.base import ComparableParameters, NNEdge
+from graph.types import SplitParameters
 from utils.graph import GraphView
+
 LOG = logging.getLogger("nntool." + __name__)
 
 
@@ -25,47 +29,110 @@ class MatchDuplicateOperations(Matcher):
     NAME = "match_duplicate_operations"
     DESCRIPTION = """Removes operations that are duplicates on the same edge"""
 
-    def match(self, G: GraphView, set_identity: bool = True):
-        def same_source_edge(x):
+    def match(self, G: GraphView, set_identity: bool = True, **kwargs):
+        if G.quantization:
+            LOG.warning('match_duplicate_operations does not handle quantized graphs')
+            return False
+
+        def same_source_edge_fn(x):
             return f"{x.from_node.__hash__()}##{x.from_idx}"
 
         def same_dest_edge(x):
             return f"{x.to_node.__hash__()}##{x.to_idx}"
         
         modified_graph = False
-        same_source_edges = [list(edge_list) for _, edge_list in
-                             groupby(sorted(G.edges(), key=same_source_edge), same_source_edge)]
-        # all have the same origin
-        same_source_edges = [elem for elem in same_source_edges
-                             if len(elem) > 1]
-        same_dest_edges = []
+        while True:
+            found_more = False
+            same_source_edges = [list(edge_list) for _, edge_list in
+                                groupby(sorted(G.edges(), key=same_source_edge_fn), same_source_edge_fn)]
+            # all have the same origin
+            same_source_edges = [elem for elem in same_source_edges
+                                if len(elem) > 1]
+            same_dest_edges = []
+            same_dest_group_edges = []
 
-        for same_source_edge in same_source_edges:
-            same_source_edge = [edge for edge in same_source_edge if isinstance(edge.to_node, ComparableParameters)]
-            while same_source_edge:
-                first = same_source_edge.pop(0)
-                others = list(filter(partial(lambda x, y: y.to_node.is_same_operation_as(x.to_node), first), same_source_edge))
-                if others:
-                    same_dest_edges.append(tuple([first] + others))
-                    for other in others:
-                        same_source_edge.remove(other)
+            for same_source_edge in same_source_edges:
+                same_source_edge = [edge for edge in same_source_edge if isinstance(edge.to_node, ComparableParameters)]
+                while same_source_edge:
+                    first = same_source_edge.pop(0)
 
-        # all are multiple edges that go to something comparable
+                    others = list(filter(partial(lambda x, y: y.to_node.is_same_operation_as(x.to_node), first), same_source_edge))
+                    if others:
+                        same_dest_edges.append(tuple([first] + others))
+                        for other in others:
+                            same_source_edge.remove(other)
+                        continue
 
-        for edge_set in same_dest_edges:
-            first = edge_set[0]
-            first_node = first.to_node
-            dup_nodes = []
-            for other in edge_set[1: : ]:
+                    other_groups = list(filter(partial(lambda x, y: y.to_node.can_be_grouped_with(x.to_node), first), same_source_edge))
+                    if other_groups:
+                        same_dest_group_edges.append(tuple([first] + other_groups))
+                        for other in other_groups:
+                            same_source_edge.remove(other)
+
+
+            # all are multiple edges that go to something comparable
+
+            for edge_set in same_dest_edges:
                 modified_graph = True
-                dest_node = other.to_node
-                dup_nodes.append(dest_node.name)
-                out_edges = G.out_edges(dest_node.name)
-                G.remove(dest_node)
-                for out_edge in out_edges:
-                    G.add_edge(NNEdge(from_node=first_node, to_node=out_edge.to_node,
-                                      from_idx=out_edge.from_idx, to_idx=out_edge.to_idx))
-            LOG.info(f'removed duplicates {",".join(dup_nodes)} to {first_node.name}')
+                found_more = True
+                first = edge_set[0]
+                first_node = first.to_node
+                dup_nodes = []
+                for other in edge_set[1::]:
+                    dest_node = other.to_node
+                    dup_nodes.append(dest_node.name)
+                    out_edges = G.out_edges(dest_node.name)
+                    G.remove(dest_node)
+                    for out_edge in out_edges:
+                        G.add_edge(NNEdge(from_node=first_node, to_node=out_edge.to_node,
+                                        from_idx=out_edge.from_idx, to_idx=out_edge.to_idx))
+                LOG.info(f'removed duplicates {",".join(dup_nodes)} to {first_node.name}')
+
+            for edge_set in same_dest_group_edges:
+                modified_graph = True
+                found_more = True
+                # we will merge all the convolutions into one
+                first = edge_set[0]
+                first_node = first.to_node
+                in_edges = G.indexed_in_edges(first_node.name)
+                first_filter = first_node.filter
+                weights_node = in_edges[1].from_node
+                biases_node = in_edges[2].from_node
+                dup_nodes = []
+                num_convs = len(edge_set)
+                out_shape = deepcopy(first_node.out_dims[0])
+                out_shape.c *= num_convs
+                # create a split after the first node splitting on channel axis
+                act_slices, out_shapes, axis = SplitParameters.get_splits(out_shape, out_shape.get_order_idx('c'), num_splits=num_convs)
+                split1 = SplitParameters(G.unique_name(f'{first_node.name}_split'), act_slices=act_slices, out_shapes=out_shapes, axis=axis)
+                out_num = 0
+                # first node out edge goes to split
+                out_edge = G.out_edges(first_node.name)[0]
+                G.remove_edge(out_edge)
+                G.add_edge(NNEdge(from_node=first_node, to_node=split1))
+                # first split output goes to original output
+                G.add_edge(NNEdge(from_node=split1, from_idx=out_num, to_node=out_edge.to_node, to_idx=out_edge.to_idx))
+                for other in edge_set[1::]:
+                    out_num += 1
+                    node_other = other.to_node
+                    dup_nodes.append(node_other.name)
+                    in_edges = G.indexed_in_edges(node_other.name)
+                    weights_other = in_edges[1].from_node
+                    biases_other = in_edges[2].from_node
+                    # merge the weights and biases diwn output channel
+                    weights_node.value = np.concatenate((weights_node.value, weights_other.value), axis=first_filter.get_order_idx('out_c'))
+                    biases_node.value= np.concatenate((biases_node.value, biases_other.value))
+                    first_filter.out_c += node_other.filter.out_c
+                    # wire edge from split
+                    out_edge = G.out_edges(node_other.name)[0]
+                    G.remove(node_other)
+                    G.remove(weights_other)
+                    G.remove(biases_other)
+                    G.add_edge(NNEdge(from_node=split1, from_idx=out_num, to_node=out_edge.to_node, to_idx=out_edge.to_idx))
+                    # TODO - handle quantization
+                LOG.info(f'merged convolutions {",".join(dup_nodes)} into {first_node.name}')
+            if not found_more:
+                break
 
         if set_identity:
             self.set_identity(G)

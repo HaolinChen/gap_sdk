@@ -12,3 +12,4 @@ Tools
    gapy/README.rst
    docs/gvsoc/index.rst
    littlefs/README.rst
+   profiler/README.rst

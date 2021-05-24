@@ -30,6 +30,9 @@
 
 #include "string.h"
 
+#pragma GCC push_options
+#pragma GCC optimize("O2")
+
 int32_t memcmp(const void *str1, const void *str2, size_t n)
 {
     uint8_t *s1 = (uint8_t *) str1;
@@ -224,3 +227,4 @@ char * strchr( const char * s, int c )
     return NULL;
 }
 
+#pragma GCC pop_options

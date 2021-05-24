@@ -13,63 +13,68 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-from .match_channel_padded_add import MatchPadAddAct
+from .concat_split import ConcatSplitMatch
+from .copy_on_split_inputs import CopyOnSplitInputs
+from .duplicate_constants import MatchDuplicateConstants
+from .duplicate_operations import MatchDuplicateOperations
 from .equalize_sym_mult_concats import \
     EqualizeSymmetricMultiplicativeQuantivedConcats
 from .expand_transposes import ExpandTransposesMatcher
+from .expression_matcher import ExpressionMatcher
 from .filt_bigger_than_in import FilterBiggerThanInput
 from .find_hsigmoid import MatchCloseHSigmoid, MatchFarHSigmoid
 from .find_missing_quantization import FindMissingQuantization
 from .fuse_pad import MatchFusePad
+from .gather_to_split import GatherToSplitMatch
 from .insert_copies import MatchInsertCopies
-from .match_external_bias import MatchExternalBias # , MatchExternalBiasSQ8
+from .match_batch_minor_linear import MatchBatchMinorLinear
+from .match_channel_padded_add import MatchPadAddAct
+from .match_external_bias import MatchExternalBias  # , MatchExternalBiasSQ8
 from .match_gap_conv import MatchAllGapConv
 from .match_gap_linear import MatchGapLinear
 from .match_gap_pool import MatchGapPool
+from .match_matmul_add_bias import MatchMatMulAddBias
 from .match_op_activation import (MatchOpActivationPow2Kernels,
                                   MatchOpActivationScaleKernels)
+from .match_reversed_rnn import MatchReversedRnn
 from .match_rnn_unpack import MatchRnnUnpack
 from .matcher import MatchGroup
 from .matscale import FuseMatScale, FuseMatScalePair
 from .move_node_up import (MoveActivationsMatcherPow2,
                            MoveActivationsMatcherScale8,
                            MoveMaxPoolMatcherScale8)
-from .propagate_softmax_sym_mult_qrec import PropagateSoftmaxSymQrec
 from .propagate_rnn_sym_mult_qrec import PropagateUpRNNInputQ
 from .remove_noops import RemoveNoOPs
-from .remove_relus import RemoveRelusMatch
-from .remove_unused_concats import RemoveUnusedConcats
-from .expression_matcher import ExpressionMatcher
-from .match_reversed_rnn import MatchReversedRnn
-from .gather_to_split import GatherToSplitMatch
-from .duplicate_operations import MatchDuplicateOperations
-from .slice_to_split import SliceToSplitMatch
-from .concat_split import ConcatSplitMatch
-from .match_matmul_add_bias import MatchMatMulAddBias
 from .remove_quantize_operators import RemoveQuantizeOperators
-from .duplicate_constants import MatchDuplicateConstants
+from .remove_relus import RemoveRelusMatch
+from .remove_reshapes import RemoveReshapes
+from .remove_reshapes_before_linear import RemoveReshapesBeforeLinear
+from .remove_unused_concats import RemoveUnusedConcats
+from .slice_to_split import SliceToSplitMatch
 
-ALL_MATCH_CLASSES = [MatchDuplicateOperations, MatchDuplicateConstants, SliceToSplitMatch, ConcatSplitMatch, MatchReversedRnn, MatchRnnUnpack, RemoveRelusMatch, RemoveNoOPs, MatchExternalBias,
+ALL_MATCH_CLASSES = [RemoveReshapesBeforeLinear, MatchDuplicateOperations, MatchDuplicateConstants, SliceToSplitMatch, ConcatSplitMatch, MatchReversedRnn, MatchRnnUnpack, RemoveRelusMatch, RemoveNoOPs, MatchExternalBias,
                      MatchFusePad, RemoveUnusedConcats, GatherToSplitMatch, MatchMatMulAddBias,
                      FindMissingQuantization, MatchFarHSigmoid, MatchCloseHSigmoid, MoveMaxPoolMatcherScale8,
-                     MoveActivationsMatcherScale8, MoveActivationsMatcherPow2,
+                     MoveActivationsMatcherScale8, MoveActivationsMatcherPow2, CopyOnSplitInputs,
                      EqualizeSymmetricMultiplicativeQuantivedConcats, RemoveQuantizeOperators,
                      MatchAllGapConv, MatchGapPool, MatchOpActivationScaleKernels,
                      MatchOpActivationPow2Kernels, FilterBiggerThanInput,
-                     MatchGapLinear, ExpandTransposesMatcher,
-                     FuseMatScalePair, FuseMatScale, MatchInsertCopies, ExpressionMatcher, PropagateUpRNNInputQ]
-POW2_MATCH_CLASSES = [RemoveRelusMatch, RemoveNoOPs, MatchExternalBias, MatchFusePad,
-                      RemoveUnusedConcats, GatherToSplitMatch, FindMissingQuantization, MatchCloseHSigmoid,
-                      ExpandTransposesMatcher, MoveActivationsMatcherPow2, MatchAllGapConv, MatchGapLinear,
+                     MatchGapLinear, ExpandTransposesMatcher, MatchBatchMinorLinear,
+                     FuseMatScalePair, FuseMatScale, MatchInsertCopies, ExpressionMatcher, PropagateUpRNNInputQ,
+                     RemoveReshapes]
+POW2_MATCH_CLASSES = [RemoveReshapesBeforeLinear, RemoveRelusMatch, RemoveNoOPs, MatchExternalBias, MatchFusePad,
+                      GatherToSplitMatch, SliceToSplitMatch, RemoveUnusedConcats, MatchCloseHSigmoid,
+                      ExpandTransposesMatcher, MoveActivationsMatcherPow2, MatchAllGapConv, MatchGapLinear, MatchGapPool, MatchOpActivationPow2Kernels,
                       EqualizeSymmetricMultiplicativeQuantivedConcats, FilterBiggerThanInput,
-                      MatchInsertCopies]
-SCALE8_MATCH_CLASSES = [RemoveRelusMatch, RemoveNoOPs, MatchExternalBias, MatchFusePad, MatchPadAddAct, MatchMatMulAddBias,
-                        MatchDuplicateOperations, GatherToSplitMatch, SliceToSplitMatch, RemoveUnusedConcats, FindMissingQuantization,
-                        MatchReversedRnn, MatchRnnUnpack,
+                      MatchInsertCopies, RemoveReshapes]
+SCALE8_MATCH_CLASSES = [RemoveReshapesBeforeLinear, RemoveRelusMatch, RemoveNoOPs, MatchExternalBias, MatchFusePad,
+                        MatchPadAddAct, MatchMatMulAddBias,
+                        MatchDuplicateOperations, GatherToSplitMatch, RemoveUnusedConcats,
+                        MatchReversedRnn, MatchRnnUnpack, SliceToSplitMatch,
                         MatchFarHSigmoid, MatchCloseHSigmoid, ExpandTransposesMatcher, MoveMaxPoolMatcherScale8,
                         MoveActivationsMatcherScale8, MatchAllGapConv, MatchGapLinear, MatchOpActivationScaleKernels,
-                        PropagateSoftmaxSymQrec, EqualizeSymmetricMultiplicativeQuantivedConcats, FilterBiggerThanInput,
-                        MatchInsertCopies, PropagateUpRNNInputQ]
+                        EqualizeSymmetricMultiplicativeQuantivedConcats, FilterBiggerThanInput,
+                        MatchInsertCopies, PropagateUpRNNInputQ, RemoveReshapes]
 
 FUSION_LIST = [((match_class.NAME, match_class.DESCRIPTION), match_class())
                for match_class in ALL_MATCH_CLASSES]

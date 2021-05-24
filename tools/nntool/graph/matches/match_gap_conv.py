@@ -14,16 +14,15 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import logging
+from copy import deepcopy
 
 from graph.types import (ActivationParameters, Conv2DParameters,
-                         ConvFusionParameters, PoolingParameters)
+                         ConvFusionParameters, HSigmoidActivationParameters,
+                         HSwishActivationParameters, LeakyActivationParameters,
+                         PoolingParameters, ReluActivationParameters,
+                         SigmoidActivationParameters)
 from graph.types.base import NNEdge
-from quantization.float32.float32_quantization import (
-    Float32QuantizationRecord, Float32ScalableFilterQuantizationRecord)
-from quantization.multiplicative.mult_quantization import (
-    MultQuantizationRecord, MultScalableFilterQuantizationRecord)
-from quantization.symmetric.symmetric_quantization import (
-    SymmetricQuantizationRecord, SymmetricScalableFilterQuantizationRecord)
+from quantization.new_qrec import QRec
 from utils.graph import GraphView
 from utils.node_id import NodeId
 
@@ -31,22 +30,40 @@ from .matcher import Matcher
 
 LOG = logging.getLogger("nntool." + __name__)
 
+VALID_ACTIVATIONS_SQ8 = (
+    ReluActivationParameters,
+    LeakyActivationParameters,
+    HSigmoidActivationParameters,
+    HSwishActivationParameters,
+    SigmoidActivationParameters
+)
+
+VALID_ACTIVATIONS_POW2 = (
+    ReluActivationParameters,
+    LeakyActivationParameters,
+    HSigmoidActivationParameters,
+    HSwishActivationParameters,
+    SigmoidActivationParameters
+)
 
 class FusionMatch():
-    def __init__(self) -> None:
+    def __init__(self, valid_activations) -> None:
         self.conv = None
         self.pool = None
         self.active = None
+        self.tensor_order = None
+        self.valid_activations = valid_activations
         self.order = []
 
     def add_node(self, params):
         if isinstance(params, Conv2DParameters):
             if self.conv:
                 return None
+            self.tensor_order = params.ker_out_order[0]
             self.order.append(params)
             self.conv = params
             return self
-        elif isinstance(params, ActivationParameters):
+        elif isinstance(params, self.valid_activations):
             if self.active:
                 return None
             self.order.append(params)
@@ -54,6 +71,8 @@ class FusionMatch():
             return self
         elif isinstance(params, PoolingParameters):
             if self.pool:
+                return None
+            if self.tensor_order != params.ker_in_order[0]:
                 return None
             self.order.append(params)
             self.pool = params
@@ -72,20 +91,25 @@ class MatchAllGapConv(Matcher):
     NAME = 'fuse_gap_convs'
     DESCRIPTION = 'Fuse convolutions, pools and activations to match GAP AutoTiler operations'
 
-    def get_node_list(self, G, params, result=None):
+    def get_node_list(self, G, params, valid_activations, result=None):
         if result is None:
-            result = FusionMatch()
+            result = FusionMatch(valid_activations)
         if not result.add_node(params):
             return result
         out_edges = G.out_edges(params.name)
         if len(out_edges) > 1:
             return result
-        return self.get_node_list(G, out_edges[0].to_node, result=result)
+        return self.get_node_list(G, out_edges[0].to_node, valid_activations, result=result)
 
-    def match(self, G: GraphView, set_identity: bool = True):
+    def match(self, G: GraphView, set_identity: bool = True, **kwargs):
         has_modified_graph = False
+        group_identity = kwargs.get('group_identity')
+        if group_identity == 'pow2_match_group':
+            valid_activations = VALID_ACTIVATIONS_POW2
+        else:
+            valid_activations = VALID_ACTIVATIONS_SQ8
         for conv_node in [params for params in G.nodes() if isinstance(params, Conv2DParameters)]:
-            node_list = self.get_node_list(G, conv_node)
+            node_list = self.get_node_list(G, conv_node, valid_activations)
             if node_list is None or len(node_list.order) < 2:
                 continue
             if node_list.fusion_type == 'conv_active_pool':
@@ -93,15 +117,18 @@ class MatchAllGapConv(Matcher):
                     node_list.order = node_list.order[:2:]
                     node_list.pool = None
             elif node_list.fusion_type == 'conv_pool_active':
+                # NOTE: This is only for old POW2 kernels - SQ8 can handle this
                 if node_list.pool.pool_type == "average" and node_list.active.activation != "relu":
                     continue
-            LOG.info("fusing nodes %s", ",".join((node.name for node in node_list.order)))
+            LOG.info("fusing nodes %s", ",".join(
+                (node.name for node in node_list.order)))
             has_modified_graph = True
             subgraph = GraphView()
             last_node = None
             for node in node_list.order:
                 if last_node is not None:
-                    subgraph.add_edge(NNEdge(from_node=last_node, to_node=node))
+                    subgraph.add_edge(
+                        NNEdge(from_node=last_node, to_node=node))
                 last_node = node
             input_mapping = [[(node_list.conv, idx)] for idx in range(3)]
             output_mapping = [(last_node, 0)]
@@ -111,20 +138,17 @@ class MatchAllGapConv(Matcher):
                 subgraph=subgraph,
                 in_dims_hint=node_list.conv.in_dims_hint,
                 out_dims_hint=node_list.conv.out_dims_hint,
+                in_dims=deepcopy(node_list.conv.in_dims),
+                out_dims=deepcopy(node_list.order[-1].out_dims),
                 input_mapping=input_mapping,
                 output_mapping=output_mapping)
             if G.quantization:
                 qrecs = G.quantization.get_all(pnode.contained_nodes())
                 if qrecs:
-                    prec = None
-                    if isinstance(qrecs[0], (SymmetricQuantizationRecord, SymmetricScalableFilterQuantizationRecord)):
-                        prec = SymmetricQuantizationRecord(
-                            in_qs=qrecs[0].in_qs, out_qs=qrecs[-1].out_qs)
-                    elif isinstance(qrecs[0], (MultQuantizationRecord, MultScalableFilterQuantizationRecord)):
-                        prec = MultQuantizationRecord(in_qs=qrecs[0].in_qs, out_qs=qrecs[-1].out_qs)
-                    elif isinstance(qrecs[0], (Float32QuantizationRecord, Float32ScalableFilterQuantizationRecord)):
-                        prec = Float32QuantizationRecord(
-                            in_qs=qrecs[0].in_qs, out_qs=qrecs[-1].out_qs)
+                    # if there are quantization stats then clear them. They need to be created again
+                    G.quantization.stats = None
+                    prec = QRec.copy_ktype(
+                        qrecs[0], in_qs=qrecs[0].in_qs, out_qs=qrecs[-1].out_qs)
                     for node in pnode.contained_nodes():
                         G.quantization.move_to_fusion(node, pnode)
                     G.quantization[NodeId(pnode)] = prec
@@ -133,9 +157,11 @@ class MatchAllGapConv(Matcher):
             for node in node_list.order:
                 G.remove(node)
             for edge in in_edges:
-                G.add_edge(NNEdge(edge.from_node, pnode, from_idx=edge.from_idx, to_idx=edge.to_idx))
+                G.add_edge(NNEdge(edge.from_node, pnode,
+                                  from_idx=edge.from_idx, to_idx=edge.to_idx))
             for edge in out_edges:
-                G.add_edge(NNEdge(pnode, edge.to_node, from_idx=edge.from_idx, to_idx=edge.to_idx))
+                G.add_edge(NNEdge(pnode, edge.to_node,
+                                  from_idx=edge.from_idx, to_idx=edge.to_idx))
 
         if set_identity:
             self.set_identity(G)

@@ -43,4 +43,6 @@ int32_t abs(int32_t x)
 void exit(int32_t status)
 {
     system_exit(status);
+    /* Wait forever... */
+    while (1);
 }

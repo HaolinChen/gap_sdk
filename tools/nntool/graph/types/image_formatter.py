@@ -19,13 +19,12 @@ import numpy as np
 
 from utils.formatters import FORMAT_CHANGES, NORMALIZATIONS
 
-from .base import Parameters, SensitiveToOrder, SingleInputAndOutput
+from .base import Parameters, SensitiveToOrder, SingleInputAndOutput, cls_op_name
 
 LOG = logging.getLogger("nntool." + __name__)
 
-
+@cls_op_name('image_format')
 class ImageFormatParameters(Parameters, SingleInputAndOutput, SensitiveToOrder):
-    op_name = "image_format"
     NORMALIZATIONS = NORMALIZATIONS
     FORMAT_CHANGES = FORMAT_CHANGES
 
@@ -116,9 +115,6 @@ class ImageFormatParameters(Parameters, SingleInputAndOutput, SensitiveToOrder):
     @property
     def can_equalize(self):
         return False
-
-    def clone(self, name, groupn=None):
-        raise NotImplementedError()
 
     def __str__(self):
         return "FORMAT_CHANGE Fmt: {} Norm: {}".format(self.format_change, self.norm_func)

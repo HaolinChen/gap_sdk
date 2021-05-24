@@ -26,7 +26,7 @@ class FilterBiggerThanInput(Matcher):
     NAME = "filter_bigger_than_input"
     DESCRIPTION = """Replace filters with kernel bigger than input feature"""
 
-    def match(self, G: GraphView, set_identity: bool = True):
+    def match(self, G: GraphView, set_identity: bool = True, **kwargs):
         something_changed = False
         filt_nodes = [node for node in G.nodes()
                         if isinstance(node, (Conv2DParameters, ConvFusionParameters))]

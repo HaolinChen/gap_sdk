@@ -251,4 +251,11 @@ static inline void __os_native_irq_mask(int irq)
 }
 #endif  /* __GAP8__ */
 
+static inline int pi_platform(void)
+{
+    return (int) __PLATFORM__;
+}
+
+#define rt_platform pi_platform
+
 #endif

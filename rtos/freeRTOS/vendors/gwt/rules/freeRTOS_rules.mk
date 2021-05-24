@@ -49,10 +49,12 @@ endif				# GAP_SDK_HOME
 
 ifeq ($(chip), GAP8)
 APP_ARCH_CFLAGS     ?= -mchip=gap8 -mPE=8 -mFC=1
-else
-APP_ARCH_CFLAGS     ?= -mchip=gap9 -mPE=8 -mFC=1
-endif				# chip
 APP_ARCH_LDFLAGS    ?=
+else
+#APP_ARCH_CFLAGS     ?= -mchip=gap9 -mPE=8 -mFC=1
+APP_ARCH_CFLAGS     ?= -march=rv32imcxgap9 -mint64 -mPE=8 -mFC=1
+APP_ARCH_LDFLAGS    ?= -march=rv32imcxgap9 -mint64 -mPE=8 -mFC=1
+endif				# chip
 
 RISCV_FLAGS         ?= $(APP_ARCH_CFLAGS)
 FREERTOS_FLAGS      += -D__riscv__ -D__GAP__ -D__$(chip)__ -D__RISCV_ARCH_GAP__=1 \
@@ -91,24 +93,31 @@ ifeq ($(platform), gvsoc)
 GVSOC_FILES_CLEAN   = all_state.txt core_state.txt rt_state.txt  \
                       efuse_preload.data plt_config.json stimuli \
                       tx_uart.log
-FREERTOS_FLAGS  += -D__PLATFORM_GVSOC__ #-DPRINTF_RTL
+FREERTOS_FLAGS     += -D__PLATFORM_GVSOC__ -D__PLATFORM__=ARCHI_PLATFORM_GVSOC
 io = rtl
 
 # FPGA
 else ifeq ($(platform), fpga)
-FREERTOS_FLAGS  += -D__PLATFORM_FPGA__
+CONFIG_FREQUENCY_FPGA ?= 50000000
+FREERTOS_FLAGS     += -DCONFIG_FREQUENCY_FPGA=$(CONFIG_FREQUENCY_FPGA)
+FREERTOS_FLAGS     += -D__PLATFORM_FPGA__ -D__PLATFORM__=ARCHI_PLATFORM_FPGA
+FREERTOS_FLAGS     += -D__SEMIHOSTING__
 io ?= host
 
 # RTL
 else ifeq ($(platform), rtl)
 GUI =
-FREERTOS_FLAGS  += -D__PLATFORM_RTL__
-FREERTOS_FLAGS  += -DPRINTF_RTL
+FREERTOS_FLAGS     += -D__PLATFORM_RTL__ -D__PLATFORM__=ARCHI_PLATFORM_RTL
 io = rtl
 
 ifeq ($(GUI), 1)
 override runner_args += --gui
 endif				# GUI
+
+# BOARD
+else
+FREERTOS_FLAGS     += -D__PLATFORM_BOARD__ -D__PLATFORM__=ARCHI_PLATFORM_BOARD
+io ?= host
 
 endif				# platform
 
@@ -138,7 +147,7 @@ endif
 
 # Printf using uart
 ifeq ($(io), uart)
-IO                  = -DPRINTF_UART -DPRINTF_SEMIHOST
+IO                  = -DPRINTF_UART #-DPRINTF_SEMIHOST
 MAIN_APP_STACK_SIZE    := $(shell expr $(MAIN_APP_STACK_SIZE) + 1024)
 endif
 
@@ -152,14 +161,14 @@ endif
 
 # The pre-processor and compiler options.
 # Users can override those variables from the command line.
-FREERTOS_FLAGS     += -D__FREERTOS__ -DTOOLCHAIN_GCC_RISCV -DTOOLCHAIN_GCC
+FREERTOS_FLAGS     += -D__FREERTOS__
 
 # App task stack size.
 FREERTOS_FLAGS     += -DMAIN_APP_STACK_SIZE=$(MAIN_APP_STACK_SIZE)
 
-COMMON              = -c -g -fmessage-length=0 -fno-exceptions -fno-builtin \
+COMMON              = -c -g -fmessage-length=0 -fno-exceptions \
                       -ffunction-sections -fdata-sections -funsigned-char \
-                      -fno-delete-null-pointer-checks -fomit-frame-pointer -Os \
+                      -fno-delete-null-pointer-checks -fomit-frame-pointer \
                       $(DEVICE_FLAGS) $(FEATURE_FLAGS) $(RISCV_FLAGS) $(FREERTOS_FLAGS)
 
 GCC_OPTIM_LEVEL     = -Os	# Optimize for size.
@@ -302,6 +311,7 @@ APP_LDFLAGS        +=
 
 # Directory containing built objects
 BUILDDIR            = $(shell pwd)/BUILD$(build_dir_ext)/$(TARGET_CHIP)/GCC_RISCV
+TARGET_BUILD_DIR    = $(BUILDDIR)
 
 # Objects
 CRT0_OBJ            = $(patsubst %.S, $(BUILDDIR)/%.o, $(CRT0_SRC))
@@ -366,7 +376,7 @@ $(C_OBJS): $(BUILDDIR)/%.o: %.c
 $(APP_OBJ): $(BUILDDIR)/%.o: %.c
 	@echo "    CC $(shell basename $<)"
 	@mkdir -p $(dir $@)
-	$(TRC_MAKE)$(CC) $(CFLAGS) $(APP_CFLAGS) $(INCLUDES) $(APP_INCLUDES) -MD -MF $(basename $@).d -o $@ $<
+	$(TRC_MAKE)$(CC) $(CFLAGS) $(GCC_OPTIM_LEVEL) $(APP_CFLAGS) $(INCLUDES) $(APP_INCLUDES) -MD -MF $(basename $@).d -o $@ $<
 
 $(BIN): $(OBJS)
 	$(TRC_MAKE)$(CC) $(APP_ARCH_LDFLAGS) -MMD -MP -o $@ $(GCC_CRT) $(OBJS) $(LDFLAGS)

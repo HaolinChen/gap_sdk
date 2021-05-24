@@ -14,19 +14,18 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 from graph.types.image_formatter import ImageFormatParameters
-from quantization.kernels.kernel_base import (KernelBase, params_type,
-                                              quantization)
-from quantization.quantization_record_base import QuantizationRecordBase
+from quantization.kernels.kernel_base import KernelBase, params_type, qrec_type
+from quantization.new_qrec import QRec
 from utils.formatters import FORMAT_CHANGES, NORMALIZATIONS
 
 
 @params_type(ImageFormatParameters)
-@quantization('symmetric')
+@qrec_type('symmetric', 'scaled')
 class ImageFormatSymmetric(KernelBase):
     @classmethod
     def execute(cls, params,
                 in_tensors,
-                qrec: QuantizationRecordBase,
+                qrec: QRec,
                 **kwargs):
         del qrec
         in_dim = params.in_dims[0]

@@ -175,7 +175,7 @@
 #                     assert not edge.to_node.padding.has_padding
 #                 self.change_input_to_async(G, edge.to_node, edge.to_idx)
 
-#     def match(self, G: GraphView, set_identity: bool = True):
+#     def match(self, G: GraphView, set_identity: bool = True, **kwargs):
 #         if not G.quantization:
 #             return
 #         input_dict = {}

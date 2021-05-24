@@ -1,0 +1,56 @@
+#!/usr/bin/env python3
+
+import argparse
+import gv.gvsoc_control as gvsoc
+
+parser = argparse.ArgumentParser(description='Control GVSOC')
+
+parser.add_argument("--host", dest="host", default="localhost", help="Specify host name")
+parser.add_argument("--port", dest="port", default=42951, type=int, help="Specify host port")
+
+args = parser.parse_args()
+
+
+gv = gvsoc.Telnet_proxy(args.host, args.port)
+
+testbench = gvsoc.Testbench(gv)
+
+# Open SAI 0 interface
+i2s_0 = testbench.i2s_get(0)
+
+i2s_0.open(sampling_freq=44100, word_size=16, nb_slots=1, is_ext_clk=True, is_ext_ws=True)
+
+# Setup slot 0 RX with input wav file
+i2s_0.slot_open(slot=0, is_rx=True, word_size=16, is_msb=True, sign_extend=False, left_align=False)
+i2s_0.slot_rx_file_reader(slot=0, filetype="wav", filepath='../../../sound_0.wav')
+
+# Setup slot 0 TX with output wav file. The test will open it with a loopback to redirect sdi to sdo
+i2s_0.slot_open(slot=0, is_rx=False, word_size=16, is_msb=True, sign_extend=False, left_align=False)
+i2s_0.slot_tx_file_dumper(slot=0, filetype="au", filepath='../../../sound_out.au')
+
+# Start the clock
+i2s_0.clk_start()
+
+# Run for 1 s
+gv.run(1000000000000)
+
+# Stop the clock and the RX slot
+i2s_0.slot_stop(slot=0, stop_rx=True, stop_tx=False)
+i2s_0.clk_stop()
+
+# Run for 10 ms
+gv.run(10000000000)
+
+# Now continue with a different file
+i2s_0.slot_rx_file_reader(slot=0, filetype="wav", filepath='../../../sound_1.wav')
+i2s_0.clk_start()
+
+# Run for 1 s
+gv.run(1000000000000)
+
+# Stop everything and quit
+i2s_0.clk_stop()
+i2s_0.slot_close(slot=0)
+i2s_0.close()
+
+gv.quit()

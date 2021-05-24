@@ -15,7 +15,7 @@
 import logging
 from abc import ABC, abstractmethod
 from typing import Generator, Sequence
-
+from utils.node_id import NodeId
 from utils.graph import GraphView, Node, MatchNode
 LOG = logging.getLogger("nntool." + __name__)
 
@@ -49,7 +49,7 @@ class Matcher(ABC):
             G.graph_identity.fusions.append(self._identity)
 
     @abstractmethod
-    def match(self, G: GraphView, set_identity: bool = True) -> bool:
+    def match(self, G: GraphView, set_identity: bool = True, **kwargs) -> bool:
         pass
 
 
@@ -66,7 +66,7 @@ class DefaultMatcher(Matcher):
     def replace_function(self, G: GraphView, subgraph: GraphView) -> Node:
         pass
 
-    def match(self, G: GraphView, set_identity: bool = True) -> bool:
+    def match(self, G: GraphView, set_identity: bool = True, **kwargs) -> bool:
         replaced = True
         has_modified_graph = False
         while replaced:
@@ -117,7 +117,7 @@ class MatchGroup(Matcher):
     def add_match(self, match: Matcher):
         self.matches.append(match)
 
-    def match(self, G: GraphView, set_identity: bool = True):
+    def match(self, G: GraphView, set_identity: bool = True, **kwargs):
         # Note: assumption is that dimensions are valid when a match is called
         dimensions_set = True
         for match_instance in self.matches:
@@ -125,7 +125,7 @@ class MatchGroup(Matcher):
             if match_instance.NEEDS_VALID_DIMENSION and not dimensions_set:
                 G.add_dimensions()
                 dimensions_set = True
-            has_modified_graph = match_instance.match(G, set_identity=False)
+            has_modified_graph = match_instance.match(G, set_identity=False, group_identity=self._identity)
             if has_modified_graph:
                 LOG.info("fusions - %s modified graph", match_instance.name)
                 G.add_dimensions()

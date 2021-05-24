@@ -65,6 +65,8 @@ class MoveNodeUpMatcher(Matcher):
         elif self.execute_tests(G, self.ValidFusions, edge.from_node):
             yield edge
         else:
+
+
             raise LocationNotFoundError()
 
     @staticmethod
@@ -84,7 +86,8 @@ class MoveNodeUpMatcher(Matcher):
             LOG.info("Moving node %s between %s and %s",
                      node.name, edge.from_node.name, edge.to_node.name)
             if cnt > 0:
-                new_node = node.clone("{}_{}".format(original_node.name, cnt))
+                new_node = deepcopy(node)
+                new_node.name = f'{original_node.name}_{cnt}'
             else:
                 new_node = node
             cnt += 1
@@ -101,7 +104,7 @@ class MoveNodeUpMatcher(Matcher):
                 G.quantization.propagate(
                     G, new_node, node_in_edge.from_node, qtype=new_qrec.out_qs[0])
 
-    def match(self, G: GraphView, set_identity: bool = True):
+    def match(self, G: GraphView, set_identity: bool = True, **kwargs):
         target_nodes = [node for node in G.nodes(
         ) if self.execute_tests(G, self.ValidNodes, node)]
         target_nodes = filter(lambda n: not isinstance(

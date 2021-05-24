@@ -40,100 +40,17 @@
  * Driver data
  ******************************************************************************/
 
-extern struct cluster_driver_data *__per_cluster_data[];
-
 /*******************************************************************************
  * API implementation
  ******************************************************************************/
-
-void pi_cl_team_fork(int nb_cores, void (*entry)(void *), void *arg)
-{
-    uint32_t team_core_mask = 0;
-    uint32_t master_core_mask = (1 << ARCHI_CLUSTER_MASTER_CORE);
-    uint32_t master_worker_mask = 0;
-    if (nb_cores == 0)
-    {
-        team_core_mask = __per_cluster_data[0]->task_first->cluster_team_mask;
-    }
-    else
-    {
-        team_core_mask = ((1 << (uint32_t) nb_cores) - 1);
-    }
-
-    /* Set barriers for workers sync(application barrier), then workers + master. */
-    hal_cl_eu_barrier_setup(0, team_core_mask);
-    master_worker_mask = (team_core_mask | master_core_mask);
-    hal_cl_eu_barrier_setup((uint32_t) ARCHI_CLUSTER_SYNC_BARR_ID, master_worker_mask);
-
-    /* Reset team config. */
-    /* Remove master core from dispatcher. */
-    hal_cl_eu_dispatch_team_config(team_core_mask ^ master_core_mask);
-    hal_cl_eu_dispatch_fifo_push((uint32_t) entry);
-    hal_cl_eu_dispatch_fifo_push((uint32_t) arg);
-
-    /* Is master core involved? */
-    if (team_core_mask & master_core_mask)
-    {
-        entry(arg);
-    }
-    hal_cl_eu_barrier_trigger_wait_clear((uint32_t) ARCHI_CLUSTER_SYNC_BARR_ID);
-}
 
 void pi_cl_team_prepare_fork(int nb_cores)
 {
     uint32_t team_core_mask = 0;
     uint32_t master_core_mask = (1 << ARCHI_CLUSTER_MASTER_CORE);
-    uint32_t master_worker_mask = 0;
-    if (nb_cores == 0)
-    {
-        team_core_mask = __per_cluster_data[0]->task_first->cluster_team_mask;
-    }
-    else
+    if (nb_cores != 0)
     {
         team_core_mask = ((1 << (uint32_t) nb_cores) - 1);
+        __pi_cl_team_config_set(team_core_mask);
     }
-
-    /* Set barriers for workers sync(application barrier), then workers + master. */
-    hal_cl_eu_barrier_setup(0, team_core_mask);
-    master_worker_mask = (team_core_mask | master_core_mask);
-    hal_cl_eu_barrier_setup((uint32_t) ARCHI_CLUSTER_SYNC_BARR_ID, master_worker_mask);
-
-    /* Reset team config. */
-    hal_cl_eu_dispatch_team_config(team_core_mask ^ master_core_mask);
-}
-
-void pi_cl_team_preset_fork(void (*entry)(void *), void *arg)
-{
-    uint32_t master_core_mask = (1 << ARCHI_CLUSTER_MASTER_CORE);
-    hal_cl_eu_dispatch_fifo_push((uint32_t) entry);
-    hal_cl_eu_dispatch_fifo_push((uint32_t) arg);
-    if (hal_cl_eu_barrier_team_get(0) & master_core_mask)
-    {
-        entry(arg);
-    }
-    hal_cl_eu_barrier_trigger_wait_clear((uint32_t) ARCHI_CLUSTER_SYNC_BARR_ID);
-}
-
-void pi_cl_team_barrier()
-{
-    hal_cl_eu_barrier_trigger_wait_clear(0);
-}
-
-void pi_cl_team_critical_enter()
-{
-    hal_eu_mutex_lock(0);
-}
-
-void pi_cl_team_critical_exit()
-{
-    hal_eu_mutex_unlock(0);
-}
-
-/* Barrier(0) used to sync team. */
-int pi_cl_team_nb_cores()
-{
-    uint32_t barrier_team = hal_cl_eu_barrier_team_get(0);
-    uint32_t team_nb_cores = 0;
-    asm volatile("p.cnt %0, %1" : "=r"(team_nb_cores) : "r"(barrier_team));
-    return team_nb_cores;
 }

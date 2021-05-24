@@ -13,22 +13,20 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-from abc import ABC, abstractclassmethod
 from typing import Sequence
 
 import numpy as np
 from graph.types import Parameters
-from quantization.quantization_record_base import QuantizationRecordBase
+from quantization.new_qrec import QRec
 
 
 class KernelBase():
     PARAMS_TYPE = None
-    QUANTIZATION = None
     QREC_TYPE = None
 
     @classmethod
     def execute(cls, params: Parameters, in_tensors: Sequence[np.ndarray],
-                qrec: QuantizationRecordBase, **kwargs):
+                qrec: QRec, **kwargs):
         pass
 
     @staticmethod
@@ -38,10 +36,6 @@ class KernelBase():
     @staticmethod
     def params_type(*args):
         return KernelBase.property_register("PARAMS_TYPE", args)
-
-    @staticmethod
-    def quantization(*args):
-        return KernelBase.property_register("QUANTIZATION", args)
 
     @staticmethod
     def property_register(name, value):
@@ -54,10 +48,8 @@ class KernelBase():
 
     @classmethod
     def description(cls):
-        return "execute %s: %s %s %s" % (cls, cls.PARAMS_TYPE,
-                                     cls.QUANTIZATION, cls.QREC_TYPE)
+        return f"execute {cls}: {cls.PARAMS_TYPE} {cls.QREC_TYPE}"
 
 
 params_type = KernelBase.params_type
 qrec_type = KernelBase.qrec_type
-quantization = KernelBase.quantization

@@ -59,13 +59,13 @@ struct pi_cl_uart_req_s
 
 static inline void pi_cl_uart_write_wait(pi_cl_uart_req_t *req)
 {
-    pi_task_wait_on_no_mutex(&(req->task_done));
+    pi_cl_pi_task_wait(&(req->task_done));
     hal_compiler_barrier();
 }
 
 static inline void pi_cl_uart_read_wait(pi_cl_uart_req_t *req)
 {
-    pi_task_wait_on_no_mutex(&(req->task_done));
+    pi_cl_pi_task_wait(&(req->task_done));
     hal_compiler_barrier();
 }
 

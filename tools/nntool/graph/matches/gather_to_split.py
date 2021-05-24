@@ -25,7 +25,7 @@ class GatherToSplitMatch(Matcher):
     NAME = "gather_to_split"
     DESCRIPTION = "collects gathers from a single node and converts to a split"
 
-    def match(self, G: GraphView, set_identity: bool = True) -> bool:
+    def match(self, G: GraphView, set_identity: bool = True, **kwargs) -> bool:
         has_modified_graph = False
         gathers_by_origin = {}
         for gather in [node for node in G.nodes() if isinstance(node, GatherParameters)]:

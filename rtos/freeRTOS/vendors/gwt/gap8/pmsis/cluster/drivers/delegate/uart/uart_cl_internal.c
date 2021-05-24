@@ -99,30 +99,28 @@ static inline int32_t __pi_cl_uart_copy(pi_device_t *device, void *buffer,
 
 int pi_cl_uart_write(pi_device_t *device, void *buffer, uint32_t size, pi_cl_uart_req_t *req)
 {
-    pi_task_block(&(req->task_done));
+    pi_task_block_no_mutex(&(req->task_done));
+    req->task_done.core_id = 0;
     __pi_cl_uart_copy(device, buffer, size, TX_CHANNEL, req);
     return 0;
 }
 
 int pi_cl_uart_write_byte(pi_device_t *device, uint8_t *byte, pi_cl_uart_req_t *req)
 {
-    pi_task_block_no_mutex(&(req->task_done));
-    __pi_cl_uart_copy(device, byte, 1, TX_CHANNEL, req);
-    return 0;
+    return pi_cl_uart_write(device, byte, 1, req);
 }
 
 int pi_cl_uart_read(pi_device_t *device, void *buffer, uint32_t size, pi_cl_uart_req_t *req)
 {
     pi_task_block_no_mutex(&(req->task_done));
+    req->task_done.core_id = 0;
     __pi_cl_uart_copy(device, buffer, size, RX_CHANNEL, req);
     return 0;
 }
 
 int pi_cl_uart_read_byte(pi_device_t *device, uint8_t *byte, pi_cl_uart_req_t *req)
 {
-    pi_task_block_no_mutex(&(req->task_done));
-    __pi_cl_uart_copy(device, byte, 1, RX_CHANNEL, req);
-    return 0;
+    return pi_cl_uart_read(device, byte, 1, req);
 }
 
 #endif  /* FEATURE_CLUSTER */

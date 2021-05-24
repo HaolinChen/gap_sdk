@@ -112,7 +112,8 @@ DEFAULT_GEN_OPTS = {
     'memory_devices': MemoryDeviceInfos.default(),
     'l3_ram_device': 'AT_MEM_L3_HRAM',
     'l3_flash_device': 'AT_MEM_L3_HFLASH',
-    'AT_force_relu': True
+    'AT_force_relu': True,
+    'anonymise': False
 }
 
 DEFAULT_GEN_OPTS.update({(elem['name'].lower()): elem['default'] for elem in AUTO_TILER_OPTIONS})
@@ -144,7 +145,8 @@ DEFAULT_GEN_OPTS_DESCRIPTIONS = {
     'at_ver': {'type': int, 'descr': 'AutoTiler version'},
     'l3_ram_device': {'type': str, 'descr': 'L3 RAM device', 'choices': AT_L3_RAM_DEVICES},
     'l3_flash_device': {'type': str, 'descr': 'L3 FLASH device', 'choices': AT_L3_FLASH_DEVICES},
-    'AT_force_relu': {'type': bool, 'descr': 'Replace reluN with relu in the AT model'}
+    'AT_force_relu': {'type': bool, 'descr': 'Replace reluN with relu in the AT model'},
+    'anonymise': {'type': bool, 'descr': 'Try to anonymise names'}
 }
 
 DEFAULT_GEN_OPTS_DESCRIPTIONS.update(

@@ -11,26 +11,29 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-from .equalize_sym_mult_concats import propagate_qtype_up
 from graph.matches.matcher import Matcher
 from graph.types import RNNBaseParameters
-from quantization.multiplicative.mult_quantization import MultQuantizationRecord
-from utils.graph import Edge, GraphView
+from utils.graph import GraphView
 from utils.node_id import NodeId
+
+from .equalize_sym_mult_concats import propagate_qtype_up
+
 
 class PropagateUpRNNInputQ(Matcher):
     NAME = "propagate_up_rnn_in_qs"
     DESCRIPTION = """After quantization of rnn their in_q and out_q are the same\
                      so in_q may be changed and we need to propagate it up"""
 
-    def match(self, G: GraphView, set_identity: bool = True):
+    def match(self, G: GraphView, set_identity: bool = True, **kwargs):
         if not G.quantization:
             return
-        rnns = [node for node in G.nodes() if isinstance(node, RNNBaseParameters)]
+        rnns = [node for node in G.nodes() if isinstance(
+            node, RNNBaseParameters)]
         qrecs = [G.quantization[NodeId(node)] for node in rnns]
         for rnn, qrec in zip(rnns, qrecs):
             in_idx = rnn.INPUT_NAMES.index('input')
-            in_edge = [edge for edge in G.in_edges(rnn.name) if edge.to_idx == in_idx][0]
+            in_edge = [edge for edge in G.in_edges(
+                rnn.name) if edge.to_idx == in_idx][0]
             in_q = qrec.in_qs[in_idx]
             propagate_qtype_up(G, in_q, in_edge)
 

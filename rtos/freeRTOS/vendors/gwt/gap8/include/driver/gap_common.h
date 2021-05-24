@@ -32,5 +32,6 @@
 #define _GAP_COMMON_H_
 
 #include "gap_io.h"
+#include "gap_handler_wrapper.h"
 
 #endif

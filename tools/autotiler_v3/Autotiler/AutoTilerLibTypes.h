@@ -18,6 +18,7 @@
 #define __GEN_TILING_H__
 
 #include "HashName.h"
+#include <stdint.h>
 
 /** @defgroup AutoTilerTypes AutoTilerDataTypes
 @ingroup groupAutoTiler
@@ -37,6 +38,7 @@ typedef enum {
         KOP_CONV_HWCE,
         KOP_CONV,
         KOP_CONV_DP,
+        KOP_CONV1D_DP,
         KOP_CONV_DW,
         KOP_CONV_DWDP,
 	KOP_DP_REDUCT,
@@ -54,15 +56,19 @@ typedef enum {
         KOP_ACT_NONE,
         KOP_RELU,
 	KOP_RELUN,
+	KOP_RELUM,
+	KOP_RELUMN,
 	KOP_HSIGMOID,
 	KOP_HSWISH,
 	KOP_LEAKYRELU,
+	KOP_SIGMOID,
         KOP_LINEAR,
         KOP_LINEAR_DP,
 	KOP_DP_REDUCT_LINEAR,
         KOP_MATADD,
         KOP_MATADD_DYNADJUST,
         KOP_MATMUL,
+        KOP_MATMUL_NOBIAS,
         KOP_MATMUL_SM1,
         KOP_MATMUL_SCALE,
         KOP_MATMUL_SCALE_SCALAR,
@@ -81,6 +87,7 @@ typedef enum {
         KOP_SOFTMAX,
 	KOP_EXPAND,
 	KOP_COLLAPSE,
+	KOP_COPY,
 
 	KOP_RNN,
 	KOP_LSTM,
@@ -133,6 +140,18 @@ typedef enum {
         KOP_MATADD_RELUN,
         KOP_MATMUL_RELU,
         KOP_MATMUL_RELUN,
+
+        KOP_ACT_NONE_IN_SCALE,
+        KOP_RELU_IN_SCALE,
+	KOP_RELUN_IN_SCALE,
+	KOP_RELUM_IN_SCALE,
+	KOP_RELUMN_IN_SCALE,
+	KOP_HSIGMOID_IN_SCALE,
+	KOP_HSWISH_IN_SCALE,
+	KOP_LEAKYRELU_IN_SCALE,
+	KOP_SIGMOID_IN_SCALE,
+
+	KOP_DP_REDUCT_UNSIGNED,
 
 	KOP_LAST
 
@@ -196,6 +215,8 @@ typedef enum {
 
 #define	SPACE_PROP_ABS			0x00010000
 #define	SPACE_PROP_REVERT		0x00020000
+#define	SPACE_PROP_PAD2PREF		0x00040000
+#define	SPACE_PROP_ONE_TILE		0x00080000
 
 #define	RAW_SPACE(Space)		((Space) & ITER_SPACE_MASK)
 #define	PROP_SPACE(Space)		((Space)>>ITER_PROP_OFF)
@@ -237,6 +258,9 @@ typedef enum {
 	CALL_SEQUENTIAL=0,	/**< Call the related basic kernel only on master core */
 	CALL_PARALLEL=1,	/**< Call the related basic kernel on all available cores */
 	CALL_SEQUENTIAL_STRUCT=2,/**< Call the related basic kernel only on master core but pass all arguments through one structure */
+	CALL_MASK=3,		/**< To extract what is related to call nature */
+	CALL_FLOAT_KER=4,	/**< Attribute, this kernel uses float arithmetic */
+	CALL_HWC_KER=8,		/**< Attribute, this kernel assumes HWC tensor order, default is CHW */
 } KernelCallTypeT;
 
 /**
@@ -302,10 +326,13 @@ Tiling orientation is global to the user kernel applying to every single user ke
 defined in it's set of constraints
 */
 typedef enum {
-	TILE_HOR,	/**< Tiles are horizontal, full width and variable height */
-	TILE_VER,	/**< Tiles are vertical, full height and variable width */
+	TILE_HOR = 0,	/**< Tiles are horizontal, full width and variable height */
+	TILE_VER = 1,	/**< Tiles are vertical, full height and variable width */
+	TILE_HWC = 2,	/**< Tiles are vertical, full height and variable width, HWC order */
 	TILE_UNDEF	/**< Undefined orientation */
 } Tile_Orientation_T;
+#define TILE_ORIENT_MASK	0x1
+#define TILE_ORDER_MASK		0x2
 
 /**
 @brief User kernel argument constraints
@@ -420,6 +447,12 @@ typedef enum {
 	O_STACK_PRED		= (1<<20),	/**< Argument should be allocated without alignment padding between it and prev in declaration list */
 	O_NO_LOAD		= (1<<21),	/**< Argument has O_IN and O_BUFF attribute but load is not performed */
 	O_NO_STORE		= (1<<22),	/**< Argument has O_OUT and O_BUFF attribute but store is not performed */
+	O_BIT			= (1<<23),	/**< Argument ItemSize is expressed in bits instead of bytes */
+	O_LINEAR		= (1<<24),	/**< Argument is always accessed with a 1D access, may require layout reorg prior as a consequence Arg should be const */
+	O_NE16_PW		= (1<<25),	/**< Argument is a NE16 weights tensor for point wise convolution */
+	O_NE16_DW		= (1<<26),	/**< Argument is a NE16 weights tensor for depth wise convolution */
+	O_NE16_LIN		= (1<<27),	/**< Argument is a NE16 weights tensor for linear layer */
+	O_FLOAT			= (1<<28),	/**< Argument is a float */
 
         O_TILE2                 = (1<<29),      /**< Argument traverses the 3rd level of iteration on the basic data plane */
         O_TILE1                 = (1<<30),      /**< Argument traverses the 2nd level of iteration on the basic data plane */
@@ -540,6 +573,8 @@ typedef enum {
 	BIND_OP_AND=10,
 	BIND_OP_OR=11,
 	BIND_OP_LAST=12,
+	BIND_OP_EQ=13,
+	BIND_OP_NEQ=14,
 } ArgBindingOper;
 
 /* Internal tiler data structures */
@@ -554,6 +589,8 @@ typedef enum {
 	USE_LAST=6
 } InfosUsage_T;
 
+
+typedef struct A_CKernel_Arg_T CKernel_Arg_T;
 typedef struct AGraphNodeList_T GraphNodeList_T;
 typedef struct AGraphNode_T GraphNode_T;
 typedef struct AGraphEdgeWeb_T GraphEdgeWeb_T;
@@ -561,6 +598,69 @@ typedef struct AGraphEdgeWebList_T GraphEdgeWebList_T;
 typedef struct AChannelNodeList_T ChannelNodeList_T;
 typedef struct AChannelList_T ChannelList_T;
 typedef struct ABufferList_T BufferList_T;
+
+typedef enum {
+        /* Unary */
+        AE_UMINUS,
+        AE_UPLUS,
+        AE_BNOT,
+        AE_NOT,
+        AE_CAST,
+
+        /* Diadic */
+        AE_MULT,
+        AE_DIV,
+        AE_MOD,
+
+        AE_PLUS,
+        AE_MINUS,
+
+        AE_LSHIFT,
+        AE_RSHIFT,
+
+        AE_LT,
+        AE_GT,
+        AE_LTE,
+        AE_GTE,
+        AE_EQ,
+        AE_NE,
+
+        AE_BAND,
+        AE_BOR,
+        AE_BXOR,
+
+        AE_AND,
+        AE_OR,
+
+        /* SubScript */
+	AE_SUBSCR,
+
+        /* Conditional */
+	AE_COND,
+
+	/* Leaves */
+	AE_INT,
+	AE_FLOAT,
+	AE_IDENT,
+	AE_CARG,
+	AE_KARG,
+} ArgExprOper_T;
+
+typedef struct A_ArgExpr_T ArgExpr_T;
+typedef struct A_ArgExpr_T {
+        ArgExprOper_T		Oper;
+	KernelArgSelect_T 	SubOper;
+        union {
+                struct {
+                        ArgExpr_T *Sel;
+                        ArgExpr_T *Left;
+                        ArgExpr_T *Right;
+                } SubT;
+                int64_t Int;
+                double Float;
+                NameT *Id;
+        } V;
+} ArgExpr_T;
 
 typedef struct {
 	char *SpaceName;		/* Name of this space */
@@ -577,7 +677,7 @@ typedef struct {
 	unsigned int TiledDim;		/* Dimension after tiling */
 	unsigned int TileSize[2];	/* InitialDim = (TiledDim-1)*TileSize[0] + TileSize[1] */
 	unsigned int PreferedDiv;	/* InitialDim = k1*PreferedDiv + k0, k0<PreferedDiv */
-	char NoRem;			/* Select space divider with no remainder */
+	char FullSpace;			/* If 1 don't partition this dimension, e.g take it as a whole */
 	char Allocated;			/* =1 once this parametric dimension has been set */
 } KerIteratorParT;
 
@@ -586,25 +686,31 @@ typedef struct {
 	unsigned int Dim;		/* If KerIterSpace is a regular iterator provides the dimension, otherwise (tiled iterator) it is irrelevant */
 	unsigned int Position;		/* In which position in KernelIterationSpace from Outer=0 to IterDim-1 */
 	KerIteratorParT *Parameter;	/* In case a non tiled space is parametric */
+	union {
+		NameT *Name;
+		CKernel_Arg_T *CArg;
+	} DynBound;
 } KernelIteratorDescrT;
 
 
 typedef struct {
 	unsigned int Dim;		/* Number of items in this particular dimension */
 	KernelIteratorT KerIterSpace;	/* A tiled Iterator (possibly a single tile) or a regular iterator, in case of a Ker Arg Sub Space only the most inner dim can be tiled */
-	unsigned int SpaceSize[2];	/* Total size of this sub space */
-	unsigned int SubSpaceSize[4];	/* In bytes size of one item of this sub space, In case sub space is parametric index 0 is std tile dim, index 1 is last tile dim  */
-	unsigned int UnitSubSpaceSize;	/* Size in bytes of the full sub space for a unit stride in space */
-	int UnitStride;			/* Unit move stride along KerIterSpace */
-	char IsAbs;			/* If 1 this subspace is addressable through Base (relative or not) + subscript, if 0 it is relative */
-	char InL1;			/* If 1 this subspace is entirely in L1 addressable through Base (relative or not) + subscript */
-	char Promoted;			/* If 1 this subspace has been promoted to buffer */
-	char ReverseOrder;		/* If 1 this subspace will be traverse in reverse order */
+	uint64_t SpaceSize[2];		/* Total size of this sub space */
+	uint64_t SubSpaceSize[4];	/* In bytes size of one item of this sub space, In case sub space is parametric index 0 is std tile dim, index 1 is last tile dim  */
+	uint64_t UnitSubSpaceSize;	/* Size in bytes of the full sub space for a unit stride in space */
+	int64_t UnitStride;			/* Unit move stride along KerIterSpace */
+	char IsAbs:1;			/* If 1 this subspace is addressable through Base (relative or not) + subscript, if 0 it is relative */
+	char InL1:1;			/* If 1 this subspace is entirely in L1 addressable through Base (relative or not) + subscript */
+	char Promoted:1;		/* If 1 this subspace has been promoted to buffer */
+	char ReverseOrder:1;		/* If 1 this subspace will be traverse in reverse order */
+	char PadToPrefDiv:1;		/* If 1 and is parametric dim pad tile dim to PreferedDiv in case its dim is less than PreferedTileSize */
 } KernelArgOneDimDescrT;
 
 typedef struct {
 	unsigned int Dim;				/* Number of dimensions of this kernel argument */
-	unsigned int Size;				/* Total size in bytes of this kernel argument */
+	uint64_t Size;					/* Total size in bytes or bits of this kernel argument, byte aligned */
+	uint64_t BitSize;				/* Total size in bits of this kernel argument (unaligned) */
 	KernelArgOneDimDescrT **DimDescr;		/* A vector of dimension description outer to inner */
 	KernelArgOneDimDescrT **IterOrderDimDescr;	/* Reordered DimDescr according to Kernel Iteration Order */
 	int *KerIterDimDescr;				/* Indexed by kernel's IterOrder, if in DimDescr then position in IterOrderDimDescr otherwise -1 */
@@ -689,7 +795,7 @@ typedef struct {
 	char *FileName;	/* Name of the file containing the initial values */
 	int Format;	/* Float or fixed point */
 	int Binary;	/* 1: file content is binary, 0: file content is text */
-	int Size;	/* When Format is Fract Size in bytes of the container */
+	int Size;	/* When Format is Fract Size in bits of the container */
 	int Fract;	/* When format is fract position of the point */
 } ConstInit_T;
 
@@ -713,7 +819,7 @@ typedef struct {
 
 typedef struct AArgBindingDescr_T ArgBindingDescr_T;
 
-typedef struct {
+typedef struct A_CKernel_Arg_T {
 	NameT *Name;			/* The C Template Name */
 	NameT *Type;
 	KernelArgSelect_T ArgSel;
@@ -769,6 +875,11 @@ typedef struct {
 	int Value;
 } KernelDynamicSymbol_T;
 
+typedef enum {
+	ARG_INT=0,
+	ARG_BIT_INT=1,
+	ARG_FLOAT=2,
+} ArgType_T;
 
 typedef struct {
 	char *TilePointer[2*CG_MAX_PIPE_DEPTH+1];	/* Name for a tile pointer as a function of pipe depth [-MaxPipe .. MaxPipe] */
@@ -780,6 +891,7 @@ typedef struct {
 	char UsedLength[2*CG_MAX_PIPE_DEPTH+1];		/* To tack 2D length of tiles (if arg is 2D) for proper variable declaration */
 	int ArgNDim;					/* Number of dimensions of this argumentt */
 	int *ArgDim;					/* Space dimension from outer to inner, most inner dim is item size */
+	ArgType_T ArgType;				/* Argument type */
 	unsigned int TileLineInterleave;		/* In case related arg is 2D parametric and constant interleave tile lines by group of TileLineInterleave lines,
 							   remainder is kept non interleaved */
 } KerArgInfos_T;
@@ -865,8 +977,8 @@ typedef struct A_Object_T {
 	int RawItemSize;
 	int TileOverlap;		/* By how much 2 adjacent tiles should overlap, can be negative in case of non unit stride */
 	unsigned int Alignment;
-	unsigned int PreferedTileSize;
-	unsigned int PrefRem;		/* Tile size should be Ts = PrefRem + K * PreferedTileSize */
+	unsigned int PreferedTileSize;	/* Tile variable dim must be a multiple of PreferedTileSize */
+	unsigned int MinTileSize;	/* Tile variable dim must be >= MinTileSize */
 	unsigned int Constraints;
 	unsigned int DimOff;
 	unsigned int DimRem;
@@ -930,13 +1042,24 @@ typedef struct A_StackedTensors_T {
         StackedTensors_T *Next;
 } StackedTensors_T;
 
+typedef struct {
+	unsigned int L1Mem;
+	unsigned int MoveL2;
+	unsigned int MoveL3;
+        float TileOverhead;
+} KernelCost_T;
+
 typedef struct A_Kernel_T {
 	NameT *Name;
 	unsigned int First;		/* For Kernel group only */
 	unsigned int Last;		/* For Kernel group only */
 	unsigned int Instance;
 	unsigned int InGroup;
-	int IsUsed;
+
+	unsigned int IsUsed:1;		/* If used in a graph */
+	unsigned int BitMode:1;		/* If one or several arguments of this kernel had item size expressed in bits and not bytes */
+	unsigned int HWC:1;		/* If arguments are organized to HWC scheme */
+
 	InlineModeT  InlineMode;
 	KernelOptimizationT KerOpt;
 	Tile_Orientation_T Orientation;
@@ -959,6 +1082,7 @@ typedef struct A_Kernel_T {
 	unsigned int UsedL2Memory;
 	KernelInfos_T *KerInfos;
 	NodeTypeTemplate_T *NodeTypeTemplate;
+	KernelCost_T *Cost;
 } Kernel_T;
 
 typedef struct {
@@ -979,6 +1103,8 @@ typedef struct {
 	char RNNUseHardActivation; /* if != -1 Overides the usage of HARD activations in RNNs/LSTMs Generator (default use Hard ones) */ 
 	char RNNSameInStateScales; /* if != -1 Overides the RNNs/LSTMs input and state Quantization handling (default they must be the same) */ 
 	char MFCCDbInsteadOfLog; /* if != 0 the MFCC will compute 10*log10(mel_spectrogram) instead of ln(mel_spectrogram) */
+	char DynamicIter;	/* if != 0 to enable dynamic iteration count */
+	char Force_8BitsOutput;	/* Forces 8 bits output for some layers, e.g. Softmax */
 } CNN_GenControl_T;
 
 typedef struct {
@@ -986,7 +1112,7 @@ typedef struct {
 	KernelOper_T *KerOper1;	/* List of Matching primary operation, N_Oper1 */
 	int N_Oper2;		/* Number of Secondary Kernel operations supported by this user kernel */
 	KernelOper_T *KerOper2;	/* List of Matching secondary operation, N_Oper1 */
-	int ParallelFeatures;	/* if Non 0 this kernel evaluates features in parallel, if not one feature is evaluated on multiple cores, -1 don't care */
+	char ParallelFeatures;	/* if Non 0 this kernel evaluates features in parallel, if not one feature is evaluated on multiple cores, -1 don't care */
 	int OpType[5];		/* 0: In1, 1: In2, 2: In3, 3: Out , For each of them size in bytes or 0 if to be ignored */
 	int Fx;			/* Filter x dimension, 0 don't care, -1 any value, >0 a given value */
 	int Fy;		 	/* Filter y dimension, 0 don't care, -1 any value, -2 any value but equal to Fy, >0 a given value */
@@ -999,6 +1125,8 @@ typedef struct {
 typedef struct {
 	NameT *Name;
 	KernelCallTypeT CallType;
+	char FloatKer;
+	char HWCKer;
 	unsigned int CArgCount;
 	CKernel_Arg_T **CArg;
 	NameT *ParArgTypeName;
@@ -1208,6 +1336,7 @@ typedef enum {
 	AT_GRAPH_ARG2STRUCT,			/* Kernel C arguments are promoted to struct */
 	AT_GRAPH_SIZE_OPT,			/* Graph constructor, runner and destructor are compiled with -Os */
 	AT_GRAPH_WARM_CONSTRUCT,		/* If Warm arg should be added to constructor to bypass all but L1 mem allocation */
+	AT_GRAPH_CHECKSUM,			/* Trace checksum output tensors at inference time */
 } AT_GraphCtrl_T;
 /*
 #define AT_OPT_ON	((void *) 1)
@@ -1235,6 +1364,7 @@ typedef struct {
 	int PromoteArgsToStruct;		/* When 1 function calls arguments are promoted to structure */
 	int OptRunnerForSize;			/* When 1 forces CNN graph construct, runner and destruct to be compiled in Os */
 	int XtructWarmArg;			/* When 1 add Warm as an arg to xtruct */
+	int Checksum;
 } GraphControl_T;
 
 #define Q2F(V, N)               ((float) (((float) (V))/((1<<(N))-0)))
@@ -1243,7 +1373,9 @@ typedef struct {
 //#define Min(a, b)               (((a)<(b))?(a):(b))
 
 /* Return aligned value, alignment is 2^Size */
-#define ALIGN(Value, Size)      (((Value)&((1<<(Size))-1))?((((Value)>>(Size))+1)<<(Size)):(Value))
+// #define ALIGN(Value, Size)      (((Value)&((1<<(Size))-1))?((((Value)>>(Size))+1)<<(Size)):(Value))
+#define ALIGN(Value, Size)	((((Value)+(1<<(Size))-1)/(1<<(Size)))*(1<<(Size)))
+#define	PAD(Value, Pad)		((((Value) + (Pad) - 1)/(Pad))*(Pad))
 
 extern KernelIteratorInfosT KerIterInfos[];
 
@@ -1314,6 +1446,7 @@ typedef struct {
 /* For bit vector manipulation */
 #define BIT_S(Vect, Pos)        ((Vect)[(Pos)>>5] = ((Vect)[(Pos)>>5] |  (1<<((Pos)&31))))
 #define BIT_C(Vect, Pos)        ((Vect)[(Pos)>>5] = ((Vect)[(Pos)>>5] & ~(1<<((Pos)&31))))
+#define BIT_I(Vect, Pos, V)     ((Vect)[(Pos)>>5] = (((Vect)[(Pos)>>5] & ~(1<<((Pos)&31))) | (((V)&0x1)<<((Pos)&31))))
 #define BIT_V(Vect, Pos)        (((Vect)[(Pos)>>5] &  (1<<((Pos)&31)))!=0)
 
 

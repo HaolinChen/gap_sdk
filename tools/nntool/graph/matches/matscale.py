@@ -181,7 +181,7 @@ class FuseMatScalePair(Matcher):
                   'with a MatScale kernel'
     NEEDS_VALID_DIMENSION = True
 
-    def match(self, G: GraphView, set_identity: bool = True):
+    def match(self, G: GraphView, set_identity: bool = True, **kwargs):
         fac = MatScalePairMatchFactory()
         has_modified_graph = False
 
@@ -224,7 +224,7 @@ class FuseMatScale(Matcher):
     DESCRIPTION = 'Finds Matrix piecewise multiply and checks if it is compatible ' + \
                   'with a MatScale kernel'
 
-    def match(self, G: GraphView, set_identity: bool = True):
+    def match(self, G: GraphView, set_identity: bool = True, **kwargs):
         fragment = GraphMatcher(match_function=lambda state, frag: (frag, state['match']))
         fragment.add_node(MatScaleNodeMatch())
         has_modified_graph = False
