@@ -134,7 +134,7 @@ class InsertTransposeAction(Action):
 
     def _execute(self, node, G):
         LOGL("%s", str(self))
-        params = TransposeParameters(G.get_unique_name(
+        params = TransposeParameters(G.unique_name(
             f'{node.name}'), transpose=self.transpose,
             block_search_up=self.block_search_up,
             block_search_down=self.block_search_down)
@@ -155,7 +155,7 @@ class InsertReshapeAction(Action):
 
     def _execute(self, node, G):
         LOGL("%s", str(self))
-        params = ReshapeParameters(G.get_unique_name(
+        params = ReshapeParameters(G.unique_name(
             f'{node.name}'), old_shape=self.in_shape, shape=self.out_shape)
         G.insert_node_at_edge(params, self.edge, edge_class=NNEdge)
 
@@ -327,6 +327,7 @@ class DeleteTranspose(Action):
         if isinstance(node, TransposeParameters) and node.transpose_in is None:
             LOGL("remove null transpose %s", node.name)
             G.remove_and_reconnect(node, edge_class=NNEdge)
+        LOG.info('transpose is now %s', getattr(node, transpose_name))
 
     def __str__(self) -> str:
         reshape = f' insert reshape {self.reshape[0]}->{self.reshape[1]}' if self.reshape else ''

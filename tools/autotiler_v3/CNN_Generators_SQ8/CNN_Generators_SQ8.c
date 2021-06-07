@@ -116,6 +116,23 @@ void LoadCNN_SQ8_Library()
 			TCArg("signed char * __restrict__", "Infos")
 			)
 	);
+        LibKernelTemplate("KerPool_HWC_USQ8_T",
+                  CArgs(13,
+                        TCArg("unsigned char * __restrict__", "In"),
+                        TCArg("unsigned char * __restrict__", "Out"),
+                        TCArg("unsigned short int", "Feat"),
+                        TCArg("unsigned short int", "W"),
+                        TCArg("unsigned short int", "UsedW"),
+                        TCArg("unsigned short int", "H"),
+                        TCArg("unsigned short int", "UsedH"),
+                        TCArg("unsigned short int", "FS"),
+                        TCArg("unsigned short int", "FSy"),
+                        TCArg("unsigned char", "S"),
+                        TCArg("unsigned char", "Sy"),
+                        TCArg("v4s", "Pad"),
+                        TCArg("signed char * __restrict__", "Infos")
+                        )
+        );
 	LibKernelTemplate("KerGlobalPool_SQ8_T",
                   CArgs(8,
 			TCArg("void * __restrict__", "In"),
@@ -247,6 +264,9 @@ void LoadCNN_SQ8_Library()
         LibKernel("KerParConv7x7StrideS_SQ8", CALL_PARALLEL, 0, "KerConv_SQ8_T",		CNN_Match(CNN_OperList(1, KOP_CONV), 0, 1, CNN_Type(1,1,1,0,4), 7,7,1,1,-1,-2));
         LibKernel("KerParConv13x1Stride1x1_SQ8", CALL_PARALLEL, 0, "KerConv_SQ8_T",		CNN_Match(CNN_OperList(1, KOP_CONV), 0, 1, CNN_Type(1,1,1,0,4), 13,1,1,1,1,1));
         //LibKernel("KerParConv4x10StrideSxSy_SQ8", CALL_PARALLEL, 0, "KerConv_SQ8_T",		CNN_Match(CNN_OperList(1, KOP_CONV), 0, 1, CNN_Type(1,1,1,0,4), 4,10,1,1,-1,-1));
+
+        LibKernel("KerParConv1D_NStrideS_SQ8", CALL_PARALLEL, 0, "KerConv_SQ8_T",		CNN_Match(CNN_OperList(1, KOP_CONV1D), 0, 1, CNN_Type(1,1,1,0,4), -1,1,1,1,-1,1));
+        LibKernel("KerParConvNx1StrideSxS1_SQ8", CALL_PARALLEL, 0, "KerConv_SQ8_T",		CNN_Match(CNN_OperList(1, KOP_CONV), 0, 1, CNN_Type(1,1,1,0,4), -1,1,1,1,-1,1));
 
         LibKernel("KerParConvNxNStrideS_SQ8", CALL_PARALLEL, 0, "KerConv_SQ8_T",		CNN_Match(CNN_OperList(1, KOP_CONV), 0, 1, CNN_Type(1,1,1,0,4), -1,-2,1,1,-1,-2));
         LibKernel("KerParConvNxMStrideSxSy_SQ8", CALL_PARALLEL, 0, "KerConv_SQ8_T",		CNN_Match(CNN_OperList(1, KOP_CONV), 0, 1, CNN_Type(1,1,1,0,4), -1,-1,1,1,-1,-1));
@@ -521,6 +541,10 @@ void LoadCNN_SQ8_Library()
 	LibKernel("KerParMatMulB32_2x4_ReLU_SQ8", CALL_PARALLEL, 0, "KerMatMul_SQ8_T",	CNN_Match(CNN_OperList(1, KOP_MATMUL), CNN_OperList(1, KOP_RELU), 1, CNN_Type(1,1,4,0,1), 0,0,0,0,1,1));
 	LibKernel("KerParMatMulB32_ReLUN_SQ8", CALL_PARALLEL, 0, "KerMatMul_SQ8_T",	CNN_Match(CNN_OperList(1, KOP_MATMUL), CNN_OperList(1, KOP_RELUN), 1, CNN_Type(1,1,4,0,1), 0,0,0,0,1,1));
 
+	LibKernel("KerParMatMulTransposedB32_SQ8", CALL_PARALLEL, 0, "KerMatMul_SQ8_T",	CNN_Match(CNN_OperList(1, KOP_MATMUL_TRANSPOSED), CNN_OperList(1, KOP_NONE), 1, CNN_Type(1,1,4,0,1), 0,0,0,0,1,1));
+	LibKernel("KerParMatMulTransposedB32_ReLU_SQ8", CALL_PARALLEL, 0, "KerMatMul_SQ8_T",CNN_Match(CNN_OperList(1, KOP_MATMUL_TRANSPOSED), CNN_OperList(1, KOP_RELU), 1, CNN_Type(1,1,4,0,1), 0,0,0,0,1,1));
+	LibKernel("KerParMatMulTransposedB32_ReLUN_SQ8", CALL_PARALLEL, 0, "KerMatMul_SQ8_T",CNN_Match(CNN_OperList(1, KOP_MATMUL_TRANSPOSED), CNN_OperList(1, KOP_RELUN), 1, CNN_Type(1,1,4,0,1), 0,0,0,0,1,1));
+
 	LibKernel("KerParMatMulB32_2x4_PL_SQ8", CALL_PARALLEL, 0, "KerMatMul_PL_SQ8_T",	CNN_Match(CNN_OperList(1, KOP_MATMUL_SCALE_SCALAR), CNN_OperList(1, KOP_NONE), 1, CNN_Type(1,1,4,0,1), 0,0,0,0,1,1));
 	LibKernel("KerParMatMulB32_2x4_ReLU_PL_SQ8", CALL_PARALLEL, 0, "KerMatMul_PL_SQ8_T",	CNN_Match(CNN_OperList(1, KOP_MATMUL_SCALE_SCALAR), CNN_OperList(1, KOP_NONE), 1, CNN_Type(1,1,4,0,1), 0,0,0,0,1,1));
 	LibKernel("KerParMatMulB32_2x4_ReLUN_PL_SQ8", CALL_PARALLEL, 0, "KerMatMul_PL_SQ8_T",	CNN_Match(CNN_OperList(1, KOP_MATMUL_SCALE_SCALAR), CNN_OperList(1, KOP_NONE), 1, CNN_Type(1,1,4,0,1), 0,0,0,0,1,1));
@@ -594,6 +618,9 @@ void LoadCNN_SQ8_Library()
         LibKernel("KerConv5x5StrideS_SQ8", CALL_PARALLEL, 0, "KerConv_SQ8_T",		CNN_Match(CNN_OperList(1, KOP_CONV), 0, 0, CNN_Type(1,1,1,0,4), 5,5,1,1,-1,-2));
 
         LibKernel("KerConv7x7StrideS_SQ8", CALL_PARALLEL, 0, "KerConv_SQ8_T",		CNN_Match(CNN_OperList(1, KOP_CONV), 0, 0, CNN_Type(1,1,1,0,4), 7,7,1,1,-1,-2));
+
+        LibKernel("KerConv1D_NStrideS_SQ8", CALL_PARALLEL, 0, "KerConv_SQ8_T",		CNN_Match(CNN_OperList(1, KOP_CONV1D),0,0, CNN_Type(1,1,1,0,4), -1,1,1,1,-1,1));
+        LibKernel("KerConvNx1StrideSxS1_SQ8", CALL_PARALLEL, 0, "KerConv_SQ8_T",	CNN_Match(CNN_OperList(1, KOP_CONV), 0, 0, CNN_Type(1,1,1,0,4), -1,1,1,1,-1,1));
 
         LibKernel("KerConvNxNStrideS_SQ8", CALL_PARALLEL, 0, "KerConv_SQ8_T",		CNN_Match(CNN_OperList(1, KOP_CONV), 0, 0, CNN_Type(1,1,1,0,4), -1,-2,1,1,-1,-2));
         LibKernel("KerConvNxMStrideSxSy_SQ8", CALL_PARALLEL, 0, "KerConv_SQ8_T",	CNN_Match(CNN_OperList(1, KOP_CONV), 0, 0, CNN_Type(1,1,1,0,4), -1,-1,1,1,-1,-1));
@@ -729,26 +756,40 @@ void LoadCNN_SQ8_Library()
 	LibKernel("KerReductIO_CC_Sigmoid_SQ8", CALL_PARALLEL, 0, "KerConvLinReduct_SQ8_T",CNN_Match(CNN_OperList(1, KOP_DP_REDUCT_IO), CNN_OperList(1, KOP_SIGMOID), 0,
 												  CNN_Type(4,0,0,0,1), 0,0,0,0,0,0));
 
+	/* Activation and reduct for HWC Layer Layout */
+        LibKernel("KerParReduct_CC_NoScale_HWC_SQ8",   CALL_PARALLEL|CALL_HWC_KER, 0, "KerConvLinReduct_SQ8_T", CNN_Match(CNN_OperList(1, KOP_DP_REDUCT), CNN_OperList(1, KOP_NONE),      1, CNN_Type(4,0,0,0,1), 0,0,0,0,0,0));
+        LibKernel("KerParReduct_CC_ReLU_HWC_SQ8",      CALL_PARALLEL|CALL_HWC_KER, 0, "KerConvLinReduct_SQ8_T", CNN_Match(CNN_OperList(1, KOP_DP_REDUCT), CNN_OperList(1, KOP_RELU),      1, CNN_Type(4,0,0,0,1), 0,0,0,0,0,0));
+        LibKernel("KerParReduct_CC_ReLUN_HWC_SQ8",     CALL_PARALLEL|CALL_HWC_KER, 0, "KerConvLinReduct_SQ8_T", CNN_Match(CNN_OperList(1, KOP_DP_REDUCT), CNN_OperList(1, KOP_RELUN),     1, CNN_Type(4,0,0,0,1), 0,0,0,0,0,0));
+        LibKernel("KerParReduct_CC_HSigmoid_HWC_SQ8",  CALL_PARALLEL|CALL_HWC_KER, 0, "KerConvLinReduct_SQ8_T", CNN_Match(CNN_OperList(1, KOP_DP_REDUCT), CNN_OperList(1, KOP_HSIGMOID),  1, CNN_Type(4,0,0,0,1), 0,0,0,0,0,0));
+        LibKernel("KerParReduct_CC_HSwish_HWC_SQ8",    CALL_PARALLEL|CALL_HWC_KER, 0, "KerConvLinReduct_SQ8_T", CNN_Match(CNN_OperList(1, KOP_DP_REDUCT), CNN_OperList(1, KOP_HSWISH),    1, CNN_Type(4,0,0,0,1), 0,0,0,0,0,0));
+        LibKernel("KerParReduct_CC_LeakyReLU_HWC_SQ8", CALL_PARALLEL|CALL_HWC_KER, 0, "KerConvLinReduct_SQ8_T", CNN_Match(CNN_OperList(1, KOP_DP_REDUCT), CNN_OperList(1, KOP_LEAKYRELU), 1, CNN_Type(4,0,0,0,1), 0,0,0,0,0,0));
+
+        /* Unsigned */
+        LibKernel("KerParReduct_CC_HWC_USQ8",          CALL_PARALLEL|CALL_HWC_KER, 0, "KerConvLinReduct_SQ8_T", CNN_Match(CNN_OperList(1, KOP_DP_REDUCT_UNSIGNED),   CNN_OperList(1, KOP_NONE|KOP_RELU),      1, CNN_Type(4,0,0,0,1), 0,0,0,0,0,0));
+        LibKernel("KerParReduct_CC_NoScale_HWC_USQ8",  CALL_PARALLEL|CALL_HWC_KER, 0, "KerConvLinReduct_SQ8_T", CNN_Match(CNN_OperList(1, KOP_DP_REDUCT_UNSIGNED),   CNN_OperList(1, KOP_NONE),      1, CNN_Type(4,0,0,0,1), 0,0,0,0,0,0));
+        LibKernel("KerParReduct_CC_ReLUN_HWC_USQ8",    CALL_PARALLEL|CALL_HWC_KER, 0, "KerConvLinReduct_SQ8_T", CNN_Match(CNN_OperList(1, KOP_DP_REDUCT_UNSIGNED),   CNN_OperList(1, KOP_RELUN),     1, CNN_Type(4,0,0,0,1), 0,0,0,0,0,0));
+
+
 	/* Activations with tensor centric scaling */
 	LibKernel("Ker_ActNone_SQ8", CALL_PARALLEL, 0, "KerActivation_SQ8_T",		CNN_Match(CNN_OperList(1, KOP_ACT_NONE), 0, 0, CNN_Type(1,0,0,0,1), 0,0,0,0,0,0));
-        LibKernel("Ker_ReLU_SQ8", CALL_PARALLEL, 0, "KerActivation_SQ8_T",		CNN_Match(CNN_OperList(1, KOP_RELU), 0, 0, CNN_Type(1,0,0,0,1), 0,0,0,0,0,0));
-        LibKernel("Ker_ReLUN_SQ8", CALL_PARALLEL, 0, "KerActivation_SQ8_T",		CNN_Match(CNN_OperList(1, KOP_RELUN), 0, 0, CNN_Type(1,0,0,0,1), 0,0,0,0,0,0));
-        LibKernel("Ker_ReLUM_SQ8", CALL_PARALLEL, 0, "KerActivation_SQ8_T",		CNN_Match(CNN_OperList(1, KOP_RELUM), 0, 0, CNN_Type(1,0,0,0,1), 0,0,0,0,0,0));
-        LibKernel("Ker_ReLUMN_SQ8", CALL_PARALLEL, 0, "KerActivation_SQ8_T",		CNN_Match(CNN_OperList(1, KOP_RELUMN), 0, 0, CNN_Type(1,0,0,0,1), 0,0,0,0,0,0));
+        LibKernel("Ker_ReLU_SQ8", CALL_PARALLEL, 0, "KerActivation_SQ8_T",		CNN_Match(CNN_OperList(1, KOP_RELU),     0, 0, CNN_Type(1,0,0,0,1), 0,0,0,0,0,0));
+        LibKernel("Ker_ReLUN_SQ8", CALL_PARALLEL, 0, "KerActivation_SQ8_T",		CNN_Match(CNN_OperList(1, KOP_RELUN),    0, 0, CNN_Type(1,0,0,0,1), 0,0,0,0,0,0));
+        LibKernel("Ker_ReLUM_SQ8", CALL_PARALLEL, 0, "KerActivation_SQ8_T",		CNN_Match(CNN_OperList(1, KOP_RELUM),    0, 0, CNN_Type(1,0,0,0,1), 0,0,0,0,0,0));
+        LibKernel("Ker_ReLUMN_SQ8", CALL_PARALLEL, 0, "KerActivation_SQ8_T",		CNN_Match(CNN_OperList(1, KOP_RELUMN),   0, 0, CNN_Type(1,0,0,0,1), 0,0,0,0,0,0));
         LibKernel("Ker_HSigmoid_SQ8", CALL_PARALLEL, 0, "KerActivation_SQ8_T",		CNN_Match(CNN_OperList(1, KOP_HSIGMOID), 0, 0, CNN_Type(1,0,0,0,1), 0,0,0,0,0,0));
-        LibKernel("Ker_HSwish_SQ8", CALL_PARALLEL, 0, "KerActivation_SQ8_T",		CNN_Match(CNN_OperList(1, KOP_HSWISH), 0, 0, CNN_Type(1,0,0,0,1), 0,0,0,0,0,0));
-        LibKernel("Ker_LeakyReLU_SQ8", CALL_PARALLEL, 0, "KerActivation_SQ8_T",		CNN_Match(CNN_OperList(1, KOP_LEAKYRELU), 0, 0, CNN_Type(1,0,0,0,1), 0,0,0,0,0,0));
-        LibKernel("Ker_Sigmoid_SQ8", CALL_PARALLEL, 0, "KerActivation_SQ8_T",		CNN_Match(CNN_OperList(1, KOP_SIGMOID), 0, 0, CNN_Type(1,0,0,0,1), 0,0,0,0,0,0));
+        LibKernel("Ker_HSwish_SQ8", CALL_PARALLEL, 0, "KerActivation_SQ8_T",		CNN_Match(CNN_OperList(1, KOP_HSWISH),   0, 0, CNN_Type(1,0,0,0,1), 0,0,0,0,0,0));
+        LibKernel("Ker_LeakyReLU_SQ8", CALL_PARALLEL, 0, "KerActivation_SQ8_T",		CNN_Match(CNN_OperList(1, KOP_LEAKYRELU),0, 0, CNN_Type(1,0,0,0,1), 0,0,0,0,0,0));
+        LibKernel("Ker_Sigmoid_SQ8", CALL_PARALLEL, 0, "KerActivation_SQ8_T",		CNN_Match(CNN_OperList(1, KOP_SIGMOID),  0, 0, CNN_Type(1,0,0,0,1), 0,0,0,0,0,0));
 
 	LibKernel("Ker_ActNone_ScaleIn_SQ8", CALL_PARALLEL, 0, "KerActivation_SQ8_T",	CNN_Match(CNN_OperList(1, KOP_ACT_NONE_IN_SCALE), 0, 0, CNN_Type(1,0,0,0,1), 0,0,0,0,0,0));
-        LibKernel("Ker_ReLU_ScaleIn_SQ8", CALL_PARALLEL, 0, "KerActivation_SQ8_T",	CNN_Match(CNN_OperList(1, KOP_RELU_IN_SCALE), 0, 0, CNN_Type(1,0,0,0,1), 0,0,0,0,0,0));
-        LibKernel("Ker_ReLUN_ScaleIn_SQ8", CALL_PARALLEL, 0, "KerActivation_SQ8_T",	CNN_Match(CNN_OperList(1, KOP_RELUN_IN_SCALE), 0, 0, CNN_Type(1,0,0,0,1), 0,0,0,0,0,0));
-        LibKernel("Ker_ReLUM_ScaleIn_SQ8", CALL_PARALLEL, 0, "KerActivation_SQ8_T",	CNN_Match(CNN_OperList(1, KOP_RELUM_IN_SCALE), 0, 0, CNN_Type(1,0,0,0,1), 0,0,0,0,0,0));
-        LibKernel("Ker_ReLUMN_ScaleIn_SQ8", CALL_PARALLEL, 0, "KerActivation_SQ8_T",	CNN_Match(CNN_OperList(1, KOP_RELUMN_IN_SCALE), 0, 0, CNN_Type(1,0,0,0,1), 0,0,0,0,0,0));
+        LibKernel("Ker_ReLU_ScaleIn_SQ8", CALL_PARALLEL, 0, "KerActivation_SQ8_T",	CNN_Match(CNN_OperList(1, KOP_RELU_IN_SCALE),     0, 0, CNN_Type(1,0,0,0,1), 0,0,0,0,0,0));
+        LibKernel("Ker_ReLUN_ScaleIn_SQ8", CALL_PARALLEL, 0, "KerActivation_SQ8_T",	CNN_Match(CNN_OperList(1, KOP_RELUN_IN_SCALE),    0, 0, CNN_Type(1,0,0,0,1), 0,0,0,0,0,0));
+        LibKernel("Ker_ReLUM_ScaleIn_SQ8", CALL_PARALLEL, 0, "KerActivation_SQ8_T",	CNN_Match(CNN_OperList(1, KOP_RELUM_IN_SCALE),    0, 0, CNN_Type(1,0,0,0,1), 0,0,0,0,0,0));
+        LibKernel("Ker_ReLUMN_ScaleIn_SQ8", CALL_PARALLEL, 0, "KerActivation_SQ8_T",	CNN_Match(CNN_OperList(1, KOP_RELUMN_IN_SCALE),   0, 0, CNN_Type(1,0,0,0,1), 0,0,0,0,0,0));
         LibKernel("Ker_HSigmoid_ScaleIn_SQ8", CALL_PARALLEL, 0, "KerActivation_SQ8_T",	CNN_Match(CNN_OperList(1, KOP_HSIGMOID_IN_SCALE), 0, 0, CNN_Type(1,0,0,0,1), 0,0,0,0,0,0));
-        LibKernel("Ker_HSwish_ScaleIn_SQ8", CALL_PARALLEL, 0, "KerActivation_SQ8_T",	CNN_Match(CNN_OperList(1, KOP_HSWISH_IN_SCALE), 0, 0, CNN_Type(1,0,0,0,1), 0,0,0,0,0,0));
-        LibKernel("Ker_LeakyReLU_ScaleIn_SQ8", CALL_PARALLEL, 0, "KerActivation_SQ8_T",	CNN_Match(CNN_OperList(1, KOP_LEAKYRELU_IN_SCALE), 0, 0, CNN_Type(1,0,0,0,1), 0,0,0,0,0,0));
-        LibKernel("Ker_Sigmoid_ScaleIn_SQ8", CALL_PARALLEL, 0, "KerActivation_SQ8_T",	CNN_Match(CNN_OperList(1, KOP_SIGMOID_IN_SCALE), 0, 0, CNN_Type(1,0,0,0,1), 0,0,0,0,0,0));
+        LibKernel("Ker_HSwish_ScaleIn_SQ8", CALL_PARALLEL, 0, "KerActivation_SQ8_T",	CNN_Match(CNN_OperList(1, KOP_HSWISH_IN_SCALE),   0, 0, CNN_Type(1,0,0,0,1), 0,0,0,0,0,0));
+        LibKernel("Ker_LeakyReLU_ScaleIn_SQ8", CALL_PARALLEL, 0, "KerActivation_SQ8_T",	CNN_Match(CNN_OperList(1, KOP_LEAKYRELU_IN_SCALE),0, 0, CNN_Type(1,0,0,0,1), 0,0,0,0,0,0));
+        LibKernel("Ker_Sigmoid_ScaleIn_SQ8", CALL_PARALLEL, 0, "KerActivation_SQ8_T",	CNN_Match(CNN_OperList(1, KOP_SIGMOID_IN_SCALE),  0, 0, CNN_Type(1,0,0,0,1), 0,0,0,0,0,0));
 
 	/* Pooling (Max or Avg) with tensor centric scaling and optional ReLU or ReLUN activation */
         LibKernel("KerPool2x2Stride2_SQ8", CALL_PARALLEL, 0, "KerPool_SQ8_T",		CNN_Match(CNN_OperList(2, KOP_MAXPOOL, KOP_AVGPOOL), CNN_OperList(1, KOP_NONE), 0,
@@ -771,6 +812,8 @@ void LoadCNN_SQ8_Library()
 												  CNN_Type(1,0,0,0,1), -1,-1,1,1,-1,-1));
         LibKernel("KerPoolNxMStrideSxSy_ReLUN_SQ8", CALL_PARALLEL, 0, "KerPool_SQ8_T",	CNN_Match(CNN_OperList(2, KOP_MAXPOOL, KOP_AVGPOOL), CNN_OperList(1, KOP_RELUN), 0,
 												  CNN_Type(1,0,0,0,1), -1,-1,1,1,-1,-1));
+
+        LibKernel("KerParPool_MaxPoolNxMStrideSxSy__HWC_USQ8", 	CALL_PARALLEL|CALL_HWC_KER, 0, "KerPool_HWC_USQ8_T", 0);
         LoadCNN_Copy_Library();
 }
 
@@ -934,6 +977,7 @@ int CNN_ConvolutionPoolAct_SQ8(
 		if (SetBiasKerName==0) GenTilingError("CNN_ConvolutionPoolAct_SQ8 Kernel: %s, Can't find a matching Set Bias basic kernel", Name);
 	}
 
+	if (ConvOper == KOP_CONV && Height == 1 && Fcx == 1 && Fcy != 1) ConvOper = KOP_CONV1D;
 	ConvKerName = CNN_FindMatchingKernel(ConvOper, KOP_NONE, ParFeat, 1, 1, DWConv?Bias_DataSize:0, 0, 4, Fcx, Fcy, Dcx, Dcy, Scx, Scy,
 					     &NeedFcx, &NeedFcy, &NeedDcx, &NeedDcy, &NeedScx, &NeedScy, 0);
 	if (ConvKerName==0) GenTilingError("CNN_ConvolutionPoolAct_SQ8 Kernel: %s, Can't find a matching Convolution basic kernel", Name);
@@ -1380,7 +1424,7 @@ int CNN_PoolAct_SQ8(
 
 	if (!(PoolOper == KOP_MAXPOOL || PoolOper == KOP_AVGPOOL))
 		GenTilingError("CNN_Pool_SQ8 Kernel: %s, PoolOper, expecting KOP_MAXPOOL or KOP_AVGPOOL", Name);
-	if (!(ActOper == KOP_NONE || ActOper == KOP_RELU || ActOper == KOP_RELUN || ActOper == KOP_HSIGMOID || ActOper == KOP_HSWISH || ActOper == KOP_LEAKYRELU || ActOper == KOP_SIGMOID))
+	if (!(ActOper == KOP_NONE || ActOper == KOP_RELU || ActOper == KOP_RELUN || ActOper == KOP_RELUM || ActOper == KOP_RELUMN || ActOper == KOP_HSIGMOID || ActOper == KOP_HSWISH || ActOper == KOP_LEAKYRELU || ActOper == KOP_SIGMOID))
 		GenTilingError("CNN_Pool_SQ8 Kernel: %s, ActOper, expecting KOP_NONE, KOP_RELU, KOP_RELUN, KOP_HSIGMOID, KOP_HSWISH or KOP_LEAKYRELU", Name);
 
 	/* Set Kernel characteristics */
@@ -1646,7 +1690,7 @@ int CNN_GlobalPoolAct_SQ8(
 
 	if (!(PoolOper == KOP_GLOBAL_MAXPOOL || PoolOper == KOP_GLOBAL_AVGPOOL))
 		GenTilingError("CNN_GlobalPoolAct_SQ8 Kernel: %s, PoolOper should be KOP_GLOBAL_MAXPOOL or KOP_GLOBAL_AVGPOOL", Name);
-	if (!(ActOper == KOP_NONE || ActOper == KOP_RELU || ActOper == KOP_RELUN || ActOper == KOP_HSIGMOID || ActOper == KOP_HSWISH || ActOper == KOP_LEAKYRELU || ActOper == KOP_SIGMOID))
+	if (!(ActOper == KOP_NONE || ActOper == KOP_RELU || ActOper == KOP_RELUN || ActOper == KOP_RELUM || ActOper == KOP_RELUMN || ActOper == KOP_HSIGMOID || ActOper == KOP_HSWISH || ActOper == KOP_LEAKYRELU || ActOper == KOP_SIGMOID))
 		GenTilingError("CNN_GlobalPoolAct_SQ8 Kernel: %s, ActOper, expecting KOP_NONE, KOP_RELU, KOP_RELUN, KOP_HSIGMOID, KOP_HSWISH or KOP_LEAKYRELU", Name);
 
 	PoolKerName = CNN_FindMatchingKernel(PoolOper, ActOper, ParFeat, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
@@ -2227,22 +2271,24 @@ int CNN_MatAddAct_SQ8(
 {
 	Tile_Orientation_T TileOrientation = TILE_HOR;
 	int ParFeat = 1;
+	int HWCLayout = 0;
 	if (Ctrl) {
 		if (Ctrl->TileOrientation != -1) TileOrientation = (Ctrl->TileOrientation==0)?TILE_HOR:TILE_VER;
 		if (Ctrl->ParallelFeatures != -1) ParFeat = Ctrl->ParallelFeatures;
+		if (Ctrl->HWCLayout) HWCLayout = CALL_HWC_KER;
 	}
 	unsigned long long int LayerOp = 0;
 	unsigned long long int LayerBandwidth = 0;
 	int StandAloneAct = (ActOper!=KOP_NONE);
 	char *MatAddKerName=0, *ActKerName=0;
 
-	MatAddKerName = CNN_FindMatchingKernel(AddMatOper, ActOper, ParFeat, 1, 1, 0, 0, 1, 0,0,0,0,0,0, 0,0,0,0,0,0, 0);
+	MatAddKerName = CNN_FindMatchingKernelAttr(AddMatOper, ActOper, ParFeat, 0, 1, 1, 0, 0, 1, 0,0,0,0,0,0, 0,0,0,0,0,0, 0);
 	if (MatAddKerName) StandAloneAct = 0;
-	else MatAddKerName = CNN_FindMatchingKernel(AddMatOper, KOP_NONE, ParFeat, 1, 1, 0, 0, 1, 0,0,0,0,0,0, 0,0,0,0,0,0, 0);
+	else MatAddKerName = CNN_FindMatchingKernelAttr(AddMatOper, KOP_NONE, ParFeat, 0, 1, 1, 0, 0, 1, 0,0,0,0,0,0, 0,0,0,0,0,0, 0);
 	if (MatAddKerName==0) GenTilingError("CNN_MatAddAct_SQ8 Kernel: %s, Can't find a matching basic kernel for MatAdd", Name);
 
 	if (StandAloneAct) {
-		ActKerName = CNN_FindMatchingKernel(ActOper, KOP_NONE, ParFeat, 1, 1, 0, 0, 1, 0,0,0,0,0,0, 0,0,0,0,0,0, 0);
+		ActKerName = CNN_FindMatchingKernelAttr(ActOper, KOP_NONE, ParFeat, 0, 1, 1, 0, 0, 1, 0,0,0,0,0,0, 0,0,0,0,0,0, 0);
 		if (ActKerName==0) GenTilingError("CNN_MatAddAct_SQ8 Kernel: %s, Can't find a matching basic kerne for Activationl", Name);
 	}
 
@@ -2285,7 +2331,14 @@ int CNN_MatAddAct_SQ8(
 				)
 			)
 		),
-                KerArgs(4,
+		HWCLayout?
+		KerArgs(4,
+                        KerArg("In1",    KerArgSpace(2,T0,D0), O_IN|O_DB,            Width, Height,  1,             0, 0, 0, "In1"),
+                        KerArg("In2",    KerArgSpace(2,T0,D0), O_IN|O_DB,            Width, Height,  1,             0, 0, 0, "In2"),
+                        KerArg("Out",    KerArgSpace(2,T0,D0), O_OUT|O_DB,           Width, Height,  1,             0, 0, 0, "Out"),
+			KerArg("Infos",  KerArgSpace(1,T0),    O_IN|O_BUFF|O_NTILED,      1,     1,  AT_INF_DIM*1,  0, 0, 0, "Infos")
+		):
+		KerArgs(4,
                         KerArg("In1",    KerArgSpace(2,D0,T0), O_IN|O_DB,            Width, Height,  1,             0, 0, 0, "In1"),
                         KerArg("In2",    KerArgSpace(2,D0,T0), O_IN|O_DB,            Width, Height,  1,             0, 0, 0, "In2"),
                         KerArg("Out",    KerArgSpace(2,D0,T0), O_OUT|O_DB,           Width, Height,  1,             0, 0, 0, "Out"),
@@ -2689,13 +2742,18 @@ int CNN_MatMulAct_SQ8(
 	int StandAloneAct = (ActOper!=KOP_NONE);
 	Bias_DataSize = (MatMulOper == KOP_MATMUL_NOBIAS)?0:Bias_DataSize;
 	int ScaleScalar = (MatMulOper == KOP_MATMUL_SCALE_SCALAR || MatMulOper == KOP_MATMUL_NOBIAS);
+	int Transposed = (MatMulOper == KOP_MATMUL_TRANSPOSED);
 
-	if (!(MatMulOper == KOP_MATMUL) && !(MatMulOper == KOP_MATMUL_NOBIAS) && !(MatMulOper == KOP_MATMUL_SCALE_SCALAR)) GenTilingError("CNN_MatMulAct_SQ8 Kernel: %s, MatMulOper should be KOP_MATMUL", Name);
+	if (!(MatMulOper == KOP_MATMUL) && !(MatMulOper == KOP_MATMUL_NOBIAS) && !(MatMulOper == KOP_MATMUL_SCALE_SCALAR) && !(MatMulOper == KOP_MATMUL_TRANSPOSED))
+		GenTilingError("CNN_MatMulAct_SQ8 Kernel: %s, MatMulOper should be KOP_MATMUL", Name);
 
-	if (!(ActOper == KOP_NONE || ActOper == KOP_RELU || ActOper == KOP_RELUN || ActOper == KOP_HSIGMOID || ActOper == KOP_HSWISH || ActOper == KOP_LEAKYRELU || ActOper == KOP_SIGMOID))
+	if (!(ActOper == KOP_NONE || ActOper == KOP_RELU || ActOper == KOP_RELUN || ActOper == KOP_RELUM || ActOper == KOP_RELUMN || ActOper == KOP_HSIGMOID || ActOper == KOP_HSWISH || ActOper == KOP_LEAKYRELU || ActOper == KOP_SIGMOID))
 		GenTilingError("CNN_MatMulAct_SQ8 Kernel: %s, ActOper, expecting KOP_NONE, KOP_RELU, KOP_RELUN, KOP_HSIGMOID, KOP_HSWISH or KOP_LEAKYRELU", Name);
 
 	if (ColM1 != LineM2) GenTilingError("CNN_MatMulAct_SQ8: %s, Incorrect input matrices dimensions for a matrix multiplication: [%d x %d]*[%d x %d]", Name, LineM1, ColM1, LineM2, ColM2);
+	if (Transposed) {
+		ColM1 = LineM1; LineM1 = LineM2;
+	}
 	if (Width==0||Height==0) {
 		Width = ColM2; Height=1; Scx = 1; Scy = 1;
 	}
@@ -2722,7 +2780,7 @@ int CNN_MatMulAct_SQ8(
 	
 	if (Log) {
 		printf("CNN_MatMul_SQ8: %s\n", Name);
-		printf("In1  => W: %4d, H: %4d\n", ColM1, LineM1);
+		printf("In1  => W: %4d, H: %4d %s\n", ColM1, LineM1, Transposed?"(TRANSPOSED)":"");
 		printf("In2  => W: %4d, H: %4d, w: %4d, h: %4d, Sx: %1d, Sy: %1d\n", ColM2, LineM2, Width, Height, Scx, Scy);
 		printf("Out  => W: %4d, H: %4d => %s\n", ColO, LineO, ColFirst?"Column first":"Line First");
 		if (MatMulKerName) printf("%20s: %s\n", "MatMulKerName", MatMulKerName);
@@ -2754,7 +2812,7 @@ int CNN_MatMulAct_SQ8(
 					!ScaleScalar?K_Arg("Scale", KER_ARG_TILE):AT_IGNORE_ARG_BINDING,
 					!ScaleScalar?K_Arg("ScaleN", KER_ARG_TILE):AT_IGNORE_ARG_BINDING,
 					K_Arg("Out", KER_ARG_TILE),  K_Arg("Out", KER_ARG_TILE_W), K_Arg(ColFirst?"In1":"In2",  KER_ARG_TILE_BASE),
-					K_Arg("KerBuff", KER_ARG_TILE),
+					!Transposed?K_Arg("KerBuff", KER_ARG_TILE):AT_IGNORE_ARG_BINDING,
 					Bias_DataSize?K_TileOper("Infos", "char *", '@', AT_INF_BIASN):AT_IGNORE_ARG_BINDING,
 					Imm(ColFirst),
 					NeedScx?Imm(Scx):AT_IGNORE_ARG_BINDING,
@@ -2778,7 +2836,7 @@ int CNN_MatMulAct_SQ8(
 		),
 		ColFirst?
 		KerArgs(8,
-			KerArg("KerBuff",KerArgSpace(1, T1), O_BUFF|O_NTILED, Nbuff*ColM1,  1,      1,             0, 0,                                                0, 0),
+	    !Transposed?KerArg("KerBuff",KerArgSpace(1, T1), O_BUFF|O_NTILED, Nbuff*ColM1,  1,      1,             0, 0,                                                0, 0):AT_NO_KER_ARG,
 			KerArg("In1",    KerArgSpace(1, T0), O_IN|O_DB|O_CONST,     ColM1,  LineM1, 1,             0, OBJ_CONSTRAINTS_PAD_REM,                          8, "In1"),
 			KerArg("In2",    KerArgSpace(1, T1), O_IN|O_DB,             ColM2,  LineM2, 1,             0, OBJ_CONSTRAINTS_TILE_VER|OBJ_CONSTRAINTS_PAD_REM, ConsT0, "In2"),
 	  Bias_DataSize?KerArg("Bias",   KerArgSpace(1, T0), O_BUFF|O_IN|O_CONST,       1,  LineO,  Bias_DataSize, 0, OBJ_CONSTRAINTS_PAD_REM,                          0, "Bias"):AT_NO_KER_ARG,
@@ -2788,7 +2846,7 @@ int CNN_MatMulAct_SQ8(
 			KerArg("Infos",  KerArgSpace(1, T1), O_IN|O_BUFF|O_NTILED,       1,     1,  AT_INF_DIM*1,  0, 0,                                                0, "Infos")
 		):
 		KerArgs(8,
-			KerArg("KerBuff",KerArgSpace(1, T0), O_BUFF|O_NTILED, Nbuff*ColM1,  1,      1,             0, 0,                                                0, 0),
+	    !Transposed?KerArg("KerBuff",KerArgSpace(1, T1), O_BUFF|O_NTILED, Nbuff*ColM1,  1,      1,             0, 0,                                                0, 0):AT_NO_KER_ARG,
 			KerArg("In1",    KerArgSpace(1, T1), O_IN|O_DB|O_CONST,     ColM1,  LineM1, 1,             0, OBJ_CONSTRAINTS_PAD_REM,                          8, "In1"),
 			KerArg("In2",    KerArgSpace(1, T0), O_IN|O_DB,             ColM2,  LineM2, 1,             0, OBJ_CONSTRAINTS_TILE_VER|OBJ_CONSTRAINTS_PAD_REM, ConsT0, "In2"),
 	  Bias_DataSize?KerArg("Bias",   KerArgSpace(1, T1), O_BUFF|O_IN|O_CONST,       1,  LineO,  Bias_DataSize, 0, OBJ_CONSTRAINTS_PAD_REM,                          0, "Bias"):AT_NO_KER_ARG,
@@ -2821,7 +2879,7 @@ int CNN_MatMulAct_SQ8(
 					!ScaleScalar?K_Arg("Scale", KER_ARG_TILE):AT_IGNORE_ARG_BINDING,
 					!ScaleScalar?K_Arg("ScaleN", KER_ARG_TILE):AT_IGNORE_ARG_BINDING,
 					K_Arg("Out", KER_ARG_TILE),  K_Arg("Out", KER_ARG_TILE_W), K_Arg(ColFirst?"In1":"In2",  KER_ARG_TILE_BASE),
-					K_Arg("KerBuff", KER_ARG_TILE),
+					Transposed?K_Arg("KerBuff", KER_ARG_TILE):AT_IGNORE_ARG_BINDING,
 				 	Bias_DataSize?K_TileOper("Infos", "char *", '@', AT_INF_BIASN):AT_IGNORE_ARG_BINDING,
 					Imm(ColFirst),
 					NeedScx?Imm(Scx):AT_IGNORE_ARG_BINDING,
@@ -2845,7 +2903,7 @@ int CNN_MatMulAct_SQ8(
 		),
 		ColFirst?
 		KerArgs(8,
-			KerArg("KerBuff",KerArgSpace(1, T1), O_BUFF|O_NTILED, Nbuff*ColM1,  1,      1,             0, 0,                                                0, 0),
+	     Transposed?KerArg("KerBuff",KerArgSpace(1, T1), O_BUFF|O_NTILED, Nbuff*ColM1,  1,      1,             0, 0,                                                0, 0):AT_NO_KER_ARG,
 			KerArg("In1",    KerArgSpace(1, T0), O_IN|O_DB|O_CONST,     ColM1,  LineM1, 1,             0, OBJ_CONSTRAINTS_PAD_REM,                          8, "In1"),
 			KerArg("In2",    KerArgSpace(1, T1), O_IN|O_DB,             ColM2,  LineM2, 1,             0, OBJ_CONSTRAINTS_TILE_VER|OBJ_CONSTRAINTS_PAD_REM, ConsT0, "In2"),
 	  Bias_DataSize?KerArg("Bias",   KerArgSpace(1, T0), O_IN|O_DB|O_CONST,         1,  LineO,  Bias_DataSize, 0, OBJ_CONSTRAINTS_PAD_REM,                          0, "Bias"):AT_NO_KER_ARG,
@@ -2855,7 +2913,7 @@ int CNN_MatMulAct_SQ8(
 			KerArg("Infos",  KerArgSpace(1, T1), O_IN|O_BUFF|O_NTILED,       1,     1,  AT_INF_DIM*1,  0, 0,                                                0, "Infos")
 		):
 		KerArgs(8,
-			KerArg("KerBuff",KerArgSpace(1, T0), O_BUFF|O_NTILED, Nbuff*ColM1,  1,      1,             0, 0,                                                0, 0),
+	     Transposed?KerArg("KerBuff",KerArgSpace(1, T1), O_BUFF|O_NTILED, Nbuff*ColM1,  1,      1,             0, 0,                                                0, 0):AT_NO_KER_ARG,
 			KerArg("In1",    KerArgSpace(1, T1), O_IN|O_DB|O_CONST,     ColM1,  LineM1, 1,             0, OBJ_CONSTRAINTS_PAD_REM,                          8, "In1"),
 			KerArg("In2",    KerArgSpace(1, T0), O_IN|O_DB,             ColM2,  LineM2, 1,             0, OBJ_CONSTRAINTS_TILE_VER|OBJ_CONSTRAINTS_PAD_REM, ConsT0, "In2"),
 	  Bias_DataSize?KerArg("Bias",   KerArgSpace(1, T1), O_IN|O_DB|O_CONST,         1,  LineO,  Bias_DataSize, 0, OBJ_CONSTRAINTS_PAD_REM,                          0, "Bias"):AT_NO_KER_ARG,
@@ -2958,7 +3016,7 @@ int CNN_MatMulSmallM1Act_SQ8(
 
 	if (!(MatMulOper == KOP_MATMUL_SM1)) GenTilingError("CNN_MatMulSmallM1Act_SQ8 Kernel: %s, MatMulOper should be KOP_MATMUL", Name);
 
-	if (!(ActOper == KOP_NONE || ActOper == KOP_RELU || ActOper == KOP_RELUN || ActOper == KOP_HSIGMOID || ActOper == KOP_HSWISH || ActOper == KOP_LEAKYRELU || ActOper == KOP_SIGMOID))
+	if (!(ActOper == KOP_NONE || ActOper == KOP_RELU || ActOper == KOP_RELUN || ActOper == KOP_RELUM || ActOper == KOP_RELUMN || ActOper == KOP_HSIGMOID || ActOper == KOP_HSWISH || ActOper == KOP_LEAKYRELU || ActOper == KOP_SIGMOID))
 		GenTilingError("CNN_MatMulSmallM1Act_SQ8 Kernel: %s, ActOper, expecting KOP_NONE, KOP_RELU, KOP_RELUN, KOP_HSIGMOID, KOP_HSWISH or KOP_LEAKYRELU", Name);
 
 	if (ColM1 != LineM2) GenTilingError("CNN_MatMulSmallM1Act_SQ8: %s, Incorrect input matrices dimensions for a matrix multiplication: [%d x %d]*[%d x %d] %s", Name, LineM1, ColM1, LineM2, ColM2);

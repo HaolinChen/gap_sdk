@@ -52,4 +52,6 @@ class AddSubMult(MultQuantizionHandler):
             o_q = QType.from_min_max_sq(stats['range_out'][0]['min'],
                                         stats['range_out'][0]['max'],
                                         dtype=out_dtype)
+        o_q.set_forced(flags=['dtype', 'zero_point'])
+        in_qs = [in_q.set_forced(flags=['dtype', 'zero_point']) for in_q in in_qs]
         return QRec.scaled(in_qs=in_qs, out_qs=[o_q], scaled_idx=scaled_idx)

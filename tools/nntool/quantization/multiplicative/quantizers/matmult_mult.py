@@ -46,16 +46,26 @@ class MatMultMult(MultQuantizionHandler):
         in_edges = G.indexed_in_edges(params.name)
         in1_node = in_edges[0].from_node
         in2_node = in_edges[1].from_node
+
         if isinstance(in1_node, ConstantInputParameters):
             return in1_node, in_qs
         elif isinstance(in2_node, ConstantInputParameters):
+            if len(params.in_dims) > 2:
+                # check if the bias has the correct length to move constant
+                # it must have a length equal to the first tensors first dimension after transpose
+                bias_size = params.in_dims[2].size()
+                in2_shape = params.in_dims[1].shape
+                if params.transpose_in and params.transpose_in[1]:
+                    in2_shape = [in2_shape[idx] for idx in params.transpose_in[1]]
+                if in2_shape[1] != bias_size:
+                    return None, in_qs
             for edge in in_edges[:2:]:
                 G.remove_edge(edge)
             to_idx = 1
             # swap edges to move constant onto input 0
             for edge in in_edges[:2:]:
                 new_edge = NNEdge(from_node=edge.from_node, to_node=edge.to_node,
-                                  from_idx=edge.from_node, to_idx=to_idx)
+                                  from_idx=edge.from_idx, to_idx=to_idx)
                 G.add_edge(new_edge)
                 to_idx = 1 - to_idx
             # use A.B = (BT.AT)T identity
@@ -79,19 +89,25 @@ class MatMultMult(MultQuantizionHandler):
         force_out_q = force_out_qs and force_out_qs[0]
 
         G = kwargs['G']
-        in1_node, in_qs = cls.move_constant(
-            G, fusion if fusion else params, in_qs)
-        if in1_node:
-            in_q1 = QType.from_array_sq(
-                arr=in1_node.dqvalue,
-                quantized_dimension=0,
-                dtype=np.int8,
-                narrow_range=True,
-                bits=8)
+        # only attempt channel scaling if we have a bias
+        if len(in_qs) > 2:
+            in1_node, in_qs = cls.move_constant(
+                G, fusion if fusion else params, in_qs)
+            if in1_node:
+                kwargs['graph_update']['requires_adjust'] = True
+                in_q1 = QType.from_array_sq(
+                    arr=in1_node.dqvalue,
+                    quantized_dimension=0,
+                    dtype=np.int8,
+                    narrow_range=True,
+                    bits=8)
+            else:
+                in_q1 = in_qs[0].make_symmetric_signed()
         else:
             in_q1 = in_qs[0].make_symmetric_signed()
 
         in_q2 = in_qs[1].make_symmetric_signed()
+
 
         min_val, max_val = cls.get_min_max(
             fusion, stats, kwargs['all_stats'], params)
@@ -107,15 +123,19 @@ class MatMultMult(MultQuantizionHandler):
         else:
             o_q = QType.from_min_max_sq(min_val=min_val,
                                         max_val=max_val,
-                                        dtype=out_dtype,
-                                        asymmetric=opts['allow_asymmetric'])
-        biases_q = QType(
-            dtype=np.int32, scale=in_q1.scale * in_q2.scale)
+                                        dtype=out_dtype)
+        if len(in_qs) == 3:
+            biases_q = QType(
+                dtype=np.int32, scale=in_q1.scale * in_q2.scale)
+            out_in_qs = [in_q1, in_q2, biases_q]
+        else:
+            out_in_qs = [in_q1, in_q2]
 
-        mul_biases_q = MultMulBiasScaleQType.from_filter(
-            in_q1, in_q2, o_q, params)
 
-        return QRec.scaled(in_qs=[in_q1, in_q2, biases_q],
+        mul_biases_q = MultMulBiasScaleQType()
+        mul_biases_q.scale = in_q1.scale * in_q2.scale / o_q.scale
+
+        return QRec.scaled(in_qs=out_in_qs,
                            out_qs=[o_q],
                            mul_biases_q=mul_biases_q)
 
@@ -123,16 +143,18 @@ class MatMultMult(MultQuantizionHandler):
     def get_min_max(cls, fusion, stats, all_stats, params):
         min_val, max_val = None, None
         if fusion:
-            act_node = fusion.contained_nodes()[1]
-            if isinstance(act_node, HSigmoidActivationParameters):
-                # Hard sigmoid implements a RELU, be sure 6 can be represented
-                min_val, max_val = 0, 6
-            elif isinstance(act_node, SigmoidActivationParameters):
-                # Guarantee Q12 input to sigmoid
-                min_val, max_val = -8, 8
-            elif isinstance(act_node, ReluActivationParameters):
-                # Take stats from activation after the convolution
-                stats = all_stats.get(NodeId(fusion, act_node))
+            fnodes = fusion.contained_nodes()
+            if len(fnodes) > 1:
+                act_node = fnodes[1]
+                if isinstance(act_node, HSigmoidActivationParameters):
+                    # Hard sigmoid implements a RELU, be sure 6 can be represented
+                    min_val, max_val = 0, 6
+                elif isinstance(act_node, SigmoidActivationParameters):
+                    # Guarantee Q12 input to sigmoid
+                    min_val, max_val = -8, 8
+                elif isinstance(act_node, ReluActivationParameters):
+                    # Take stats from activation after the convolution
+                    stats = all_stats.get(NodeId(fusion, act_node))
 
         if min_val is None or max_val is None:
             cls.check_valid_ranges(params, stats, idx=0, dirs='out')

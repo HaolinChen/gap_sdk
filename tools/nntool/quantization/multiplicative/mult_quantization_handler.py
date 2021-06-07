@@ -13,6 +13,7 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+from generation.generator_decorators import GeneratorMatcher
 import numpy as np
 from quantization.qtype import QType
 
@@ -49,15 +50,35 @@ class MultQuantizionHandler(QuantizionHandler):
             if in_qs is None or idx is not None and idx != in_q_idx:
                 res_qs.append(in_q)
                 continue
-            if in_q.is_asymmetric or dtype is not None and dtype != in_q.dtype:
-                if in_q.forced:
+            update = False
+            if in_q.is_asymmetric:
+                # you need to change scale to change zero point
+                if in_q.forced_zero_point or in_q.forced_scale:
                     return None
+                update = True
+            if dtype is not None and dtype != in_q.dtype:
+                if in_q.forced_dtype:
+                    return None
+                update = True
+            if update:
                 this_dtype = in_q.dtype if dtype is None else dtype
                 in_q = QType.from_min_max_sq(in_q.min_val, in_q.max_val,
-                                        dtype=this_dtype, forced=True)
+                                             dtype=this_dtype, forced=True)
             res_qs.append(in_q)
         return res_qs
 
     @classmethod
     def force_symmetric_and_dtype(cls, in_qs, dtype=None, idx=None):
         return cls.force_symmetric(in_qs, idx=idx, dtype=dtype)
+
+    @classmethod
+    def _get_in_qs_from_stats(cls, params, stats, in_qs, **kwargs):
+        return [QType.from_min_max_sq(stats['range_in'][idx]['min'],
+                                      stats['range_in'][idx]['max'],
+                                      dtype=np.int8)
+                if dim is not None else None
+                for idx, dim in enumerate(params.in_dims)]
+
+    @classmethod
+    def can_handle_asymmetric_input(cls, params, **kwargs):
+        return False

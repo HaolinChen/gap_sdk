@@ -17,6 +17,7 @@ import logging
 from copy import deepcopy
 
 from quantization.new_qrec import QRec
+from quantization.qtype import QType
 
 LOG = logging.getLogger('nntool.' + __name__)
 
@@ -27,16 +28,17 @@ class SplitMixin():
         forced_out_qs = kwargs.get('force_out_qs')
         if forced_out_qs:
             # some could not be forced
-            forced_out_qs = [qtype for qtype in forced_out_qs if qtype is not None]
+            forced_out_qs = [
+                qtype for qtype in forced_out_qs if qtype is not None]
         forced_in_qs = [in_q for in_q in in_qs if in_q.forced]
         forced_in_q = forced_in_qs[0] if forced_in_qs else None
         # two inputs cannot be forced to different values
-        if forced_out_qs and any(out_q != forced_out_qs[0] for out_q in forced_out_qs[1::]):
+        if forced_out_qs and not QType.forced_equal(*forced_out_qs):
             LOG.info(
                 'two output qtypes of split %s are forced to different qtypes', params.name)
             return None
         # input cannot be forced to different value than output
-        if forced_in_q and not all(out_q == forced_in_q for out_q in forced_out_qs):
+        if forced_in_q and forced_out_qs and not forced_in_q.can_force(*forced_out_qs):
             LOG.error(
                 'output and input of split %s are forced to different qtypes', params.name)
             return None
@@ -47,7 +49,7 @@ class SplitMixin():
         if forced_in_q:
             out_qs = [deepcopy(forced_in_q) for _ in range(params.num_splits)]
             return QRec(ktype=ktype, in_qs=[deepcopy(forced_in_q)], out_qs=out_qs)
-        
+
         if forced_out_q:
             out_qs = [deepcopy(forced_out_q) for _ in range(params.num_splits)]
             return QRec(ktype=ktype, in_qs=[deepcopy(forced_out_q)], out_qs=out_qs)

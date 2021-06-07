@@ -29,7 +29,6 @@ from ..unified_quantization_handler import QuantizionHandler, options, scheme
         'help': 'bits for inputs and outputs',
         'default': 16
     })
-
 @scheme('POW2')
 class Pow2QuantizionHandler(QuantizionHandler):
     BITS_TO_DTYPE = {
@@ -60,4 +59,12 @@ class Pow2QuantizionHandler(QuantizionHandler):
     @classmethod
     def get_prefered_input_dtypes(cls, params, **kwargs):
         dtype = np.int16 if cls.get_pow2_bits(**kwargs) == 16 else np.int8
-        return [dtype for _ in params.in_dims]       
+        return [dtype if dim is not None else None for dim in params.in_dims]
+
+    @classmethod
+    def _get_in_qs_from_stats(cls, params, stats, in_qs, **kwargs):
+        return [QType.from_min_max_pow2(stats['range_in'][idx]['min'],
+                                        stats['range_in'][idx]['max'],
+                                        dtype=dtype)
+                if dtype is not None else None
+                for idx, dtype in enumerate(cls.get_prefered_input_dtypes(params, **kwargs))]

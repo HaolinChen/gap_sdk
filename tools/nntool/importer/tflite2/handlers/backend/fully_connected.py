@@ -92,7 +92,6 @@ class FullyConnected(FilterMixin, BackendHandler):
             else:
                 link = x
 
-
             # the batched linear is transpose(weights . transpose(input))
             params = MatMulOpParameters(node.name)
             params.transpose_in = [None, (1, 0), None]
@@ -100,14 +99,16 @@ class FullyConnected(FilterMixin, BackendHandler):
             cls.new_load_filter_parameters(G, params, weights_shape, 0,
                                            node.input[0], weights_node,
                                            bias_node, node.output[0], opts)
-            G.add_edge(NNEdge(from_node=link[0], to_node=params, from_idx=link[1], to_idx=1))
+            G.add_edge(
+                NNEdge(from_node=link[0], to_node=params, from_idx=link[1], to_idx=1))
             G.add_edge(NNEdge(from_node=weights_node,
                               to_node=params, to_idx=0))
             G.add_edge(NNEdge(from_node=bias_node, to_node=params, to_idx=2))
             out_shape = [batch_size, out_c]
         else:
-            in_hint = [[str(i) for i in range(len(x_known_shape) - 1)] + ['c'],
-                       ['out_c', 'in_c'], ['out_c']]
+            # in_hint = [[str(i) for i in range(len(x_known_shape) - 1)] + ['c'],
+            #            ['out_c', 'in_c'], ['out_c']]
+            in_hint = [None, ['out_c', 'in_c'], ['out_c']]
             out_hint = in_hint.copy() if keep_dims else ['c']
             ker_in_order = None
             ker_out_order = None

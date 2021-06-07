@@ -59,7 +59,6 @@ class ImageFormatCommand(NNToolShellBase):
         input_node = self.G[args.input_node]
         out_edges = self.G.out_edges(input_node.name)
         if len(out_edges) == 1 and isinstance(out_edges[0].to_node, ImageFormatParameters):
-            self.G.changes.image_format(input_node.name, None, None)
             remove_formatter(self.G, out_edges[0].to_node)
             self.G.add_dimensions()
             self.pfeedback(f'removed image formatter {out_edges[0].to_node.name}')
@@ -68,8 +67,6 @@ class ImageFormatCommand(NNToolShellBase):
             self.pfeedback("no formatting set")
             self.G.add_dimensions()
             return
-        self.G.changes.image_format(
-            input_node.name, args.image_formatter, args.image_normalizer)
         insert_formatter(self.G, input_node,
                          args.image_formatter, args.image_normalizer)
         self.G.add_dimensions()

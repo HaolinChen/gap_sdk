@@ -39,8 +39,10 @@ WIDTH_TO_DTYPE = {
     16: np.int16
 }
 
+
 class NoHandlerError(Exception):
     pass
+
 
 class ForceQs():
     def __init__(self) -> None:
@@ -227,18 +229,23 @@ def build_stats(G, current_stats):
                 # if fusion input or output recs are not present build them
                 if isinstance(fnode, FusionInputParameters) and nid not in G.quantization:
                     first_edge = node.subgraph.out_edges(fnode.name)[0]
-                    edge_qrec = G.quantization.get(NodeId(node, first_edge.to_node))
+                    edge_qrec = G.quantization.get(
+                        NodeId(node, first_edge.to_node))
                     edge_qtype = edge_qrec.in_qs[first_edge.to_idx]
-                    G.quantization[nid] = QRec.copy_ktype(edge_qrec, in_qs=[edge_qtype], out_qs=[edge_qtype])
+                    G.quantization[nid] = QRec.copy_ktype(
+                        edge_qrec, in_qs=[edge_qtype], out_qs=[edge_qtype])
                 elif isinstance(fnode, FusionOutputParameters) and nid not in G.quantization:
                     first_edge = node.subgraph.in_edges(fnode.name)[0]
-                    edge_qrec = G.quantization.get(NodeId(node, first_edge.from_node))
+                    edge_qrec = G.quantization.get(
+                        NodeId(node, first_edge.from_node))
                     edge_qtype = edge_qrec.out_qs[first_edge.from_idx]
-                    G.quantization[nid] = QRec.copy_ktype(edge_qrec, in_qs=[edge_qtype], out_qs=[edge_qtype])
+                    G.quantization[nid] = QRec.copy_ktype(
+                        edge_qrec, in_qs=[edge_qtype], out_qs=[edge_qtype])
                 stats[nid] = build_stat(G, nid)
         elif isinstance(node, ExpressionFusionParameters):
             stats[nid]['expression'] = G.quantization[nid].cache['expression']
     return stats
+
 
 def reduce_start_nodes(G, nodes):
     nodes = sorted(nodes, key=lambda x: x.step_idx)
@@ -270,12 +277,16 @@ class UnifiedQuantizer():
         self.scheme_priority = scheme_priority
 
     @classmethod
-    def from_quantized_graph(cls, G, **kwargs):
+    def from_quantized_graph(cls, G, extra_schemes=None, **kwargs):
         if not G.quantization:
             raise ValueError(
                 'calling from_quantized_graph on unquantized graph')
         stats = build_stats(G, G.quantization.stats)
         scheme_priority = G.quantization.scheme_priority or ['SQ8']
+        if extra_schemes:
+            for scheme in extra_schemes:
+                if scheme not in scheme_priority:
+                    scheme_priority.append(scheme)
         return UnifiedQuantizer(scheme_priority, stats, **kwargs)
 
     def get_options(self, parent_params, params, handler, **kwargs):
@@ -338,9 +349,8 @@ class UnifiedQuantizer():
             if handler:
                 DEBUG("handler %s selected for %s(%s)", handler.__name__,
                       params.__class__.__name__, params.name)
-                return in_qs, handler
-            # don't insert quantizers inside a fusion
-            if not parent_params and not quantizers_inserted:
+                return in_qs, force_out_qs, handler
+            if not parent_params:
                 LOG.info('no match for params %s in %s out %s scheme %s',
                          params.name, QRec.qs_to_str(in_qs), QRec.qs_to_str(force_out_qs), scheme_priority)
                 # see if we can find a handler without the input constraint
@@ -358,55 +368,13 @@ class UnifiedQuantizer():
                 if handler is None:
                     raise NoHandlerError(
                         f'no handler found for node {params.name} - even with no constraints!')
-                # give up and insert quantize parameters on inputs that don't match
                 options = self.get_options(
                     parent_params, params, handler, **kwargs)
-                input_dtypes = handler.get_prefered_input_dtypes(params,
-                                                                 parent_params=parent_params,
-                                                                 qrecs=state.qrecs,
-                                                                 opts=options,
-                                                                 cur_G=cur_G,
-                                                                 **kwargs)
-                for idx, edge in enumerate(cur_G.indexed_in_edges(params.name)):
-                    if edge is None:
-                        continue
-                    if isinstance(edge.from_node, QuantizeParameters) and len(cur_G.out_edges(edge.from_node.name)) == 1:
-                        qparams = edge.from_node
-                        qparams.to_qtype = None
-                    else:
-                        if isinstance(edge.from_node, ConstantInputParameters):
-                            # just force constant inputs to quantize correctly
-                            qparams = edge.from_node
-                            # remove any edge force since the quantization has changed
-                        else:
-                            qparams = self.insert_quantize_in(
-                                cur_G, params, idx, edge)
-                        # the in and out stats are the same as the incoming edge
-                        edge_stats = kwargs['all_stats'].get(
-                            NodeId(params))
-                        if edge_stats is None:
-                            raise ValueError(
-                                f'no range information present for {params.name}')
-                        in_range = edge_stats['range_in'][idx]
-                        kwargs['all_stats'][NodeId(qparams)] = {'range_in': [
-                            in_range], 'range_out': [in_range]}
-                        # if we have a quantize before don't get rid of a force in if there is one
-                        state.frozen_qs.set_force_qs(
-                            None, edge.to_node, edge.to_idx, None, 'in')
-
-                    state.frozen_qs.set_force_qs(
-                        None, edge.from_node, edge.from_idx, None, 'out')
-                    self.copy_options_and_scheme(
-                        scheme_priority, kwargs, qparams, params)
-                    self.quantize_forwards(
-                        cur_G, state, qparams, stop_at=[params] + stop_at, force_change=True, output_dtypes=[input_dtypes[idx]], **kwargs)
-                # inputs should now be correct
-                in_qs = state.edge_recs.get_in_qs(cur_G, params)
-                assert in_qs is not None, "in edges should be resolved now"
-                # try again
-                quantizers_inserted = True
-                continue
-
+                stats = kwargs['all_stats'].get(
+                    EdgeQuantization.get_nid(parent_params, params))
+                in_qs = handler.get_in_qs_from_stats(
+                    params, stats, in_qs, opts=options, **kwargs)
+                return in_qs, force_out_qs, handler
             raise ValueError(f'no handler found for node {params.name}')
 
     def quantize_forwards(self, cur_G, state: StateClass, params,
@@ -448,19 +416,19 @@ class UnifiedQuantizer():
             parent_params, params, **kwargs)
 
         while True:
-            in_qs, handler = self.match_forwards_handler(cur_G, state, params,
-                                                         scheme_priority, in_qs, force_out_qs,
-                                                         parent_params=parent_params, stop_at=stop_at, **kwargs)
+            act_in_qs, act_force_out_qs, handler = self.match_forwards_handler(cur_G, state, params,
+                                                                       scheme_priority, in_qs, force_out_qs,
+                                                                       parent_params=parent_params, stop_at=stop_at, **kwargs)
 
             if parent_params is None and isinstance(params, FusionBase) and handler.FUSION_HANDLER:
                 # if we hit a fusion then recurse into its subgraph if we have no handler for it
                 # first calculate or recalculate the qrec to generate appropriate input qrecs
                 cur_qrec = self.quantize_forwards_fusion(
-                    params, state, in_qs, stop_at, handler, **kwargs)
+                    params, state, act_in_qs, stop_at, handler, **kwargs)
                 # if the outputs are forced then we need to quantize the fusion backwards
                 if force_out_qs:
                     cur_qrec = self.quantize_backwards_fusion(params, force_out_qs, cur_qrec or qrec,
-                                                              state, handler, in_qs, params, **kwargs)
+                                                              state, handler, act_in_qs, params, **kwargs)
             else:
                 # call found handler
                 options = self.get_options(
@@ -468,8 +436,8 @@ class UnifiedQuantizer():
                 state.qrecs.schemes_present.add(handler.SCHEME)
                 cur_qrec = self.handle(handler,
                                        params,
-                                       in_qs,
-                                       force_out_qs=force_out_qs,
+                                       act_in_qs,
+                                       force_out_qs=act_force_out_qs,
                                        parent_params=parent_params,
                                        qrecs=state.qrecs,
                                        opts=options,
@@ -512,12 +480,12 @@ class UnifiedQuantizer():
             params, cur_qrec.out_qs, parent_params=parent_params)
         state.qrecs[nid] = cur_qrec
         self.go_forward(cur_G, state, params,
-                          parent_params=parent_params, stop_at=stop_at, force_change=force_change,
-                          force_all=force_all, **kwargs)
+                        parent_params=parent_params, stop_at=stop_at, force_change=force_change,
+                        force_all=force_all, **kwargs)
 
     def go_forward(self, cur_G, state: StateClass, params,
-                          parent_params=None, stop_at=None, force_change=False,
-                          force_all=False, **kwargs):
+                   parent_params=None, stop_at=None, force_change=False,
+                   force_all=False, **kwargs):
         for idx, out_edges in enumerate(cur_G.indexed_out_edges(params.name)):
             DEBUG("forwards at %s on out edge %s", params.name, idx)
             for out_edge in out_edges:
@@ -556,9 +524,8 @@ class UnifiedQuantizer():
         out_stats = edge_stats['range_out'][idx]
         all_stats[NodeId(qparams)] = {'range_in': [
             out_stats], 'range_out': [out_stats]}
-        if out_q.forced:
-            state.frozen_qs.set_force_out_qs(
-                None, qparams, 0, out_q)
+        state.frozen_qs.set_force_out_qs(
+            None, qparams, 0, out_q)
         LOG.info(
             'inserted quantize from %s to %s between %s:%s and %s%s',
             in_q, out_q, params.name, idx,
@@ -574,8 +541,9 @@ class UnifiedQuantizer():
         for idx, out_q in enumerate(out_qs):
             if out_q is not None and out_q != in_qs[idx]:
                 # insert the quantize before all the edges
+                force_q = deepcopy(out_q)
                 self.insert_quantize_out(
-                    cur_G, params, idx, all_out_edges[idx], in_qs[idx], out_q, state, **kwargs)
+                    cur_G, params, idx, all_out_edges[idx], in_qs[idx], force_q, state, **kwargs)
                 # remove the force
                 state.frozen_qs.set_force_qs(
                     parent_params, params, idx, None, 'out')
@@ -656,7 +624,8 @@ class UnifiedQuantizer():
 
         qrec = state.qrecs.get(nid)
         if qrec is None:
-            raise ValueError(f'qrec not set going backwards at node {params.name}')
+            raise ValueError(
+                f'qrec not set going backwards at node {params.name}')
         scheme_priority = self.get_scheme_priority(
             parent_params, params, backwards=True, **kwargs)
 
@@ -673,7 +642,8 @@ class UnifiedQuantizer():
                     force_removed = force_out_qs
                     force_out_qs = None
                     break
-                raise NoHandlerError(f'no handler found for node {params.name}')
+                raise NoHandlerError(
+                    f'no handler found for node {params.name}')
 
             DEBUG("handler %s selected for %s(%s)", handler.__name__,
                   params.__class__.__name__, params.name)
@@ -688,7 +658,8 @@ class UnifiedQuantizer():
                         force_removed = force_out_qs
                         force_out_qs = None
                         break
-                    raise NoHandlerError(f'handler error raise quantizing fusion {params.name} {exc}') from exc
+                    raise NoHandlerError(
+                        f'handler error raise quantizing fusion {params.name} {exc}') from exc
             else:
                 state.qrecs.schemes_present.add(handler.SCHEME)
                 options = self.get_options(
@@ -714,9 +685,10 @@ class UnifiedQuantizer():
                     force_out_qs = None
                     continue
                 if parent_params is not None:
-                    raise NoHandlerError(f'no solution found for node {params.name}')
+                    raise NoHandlerError(
+                        f'no solution found for node {params.name}')
                 raise ValueError(
-                        f'cannot find solution (going back) to quantize {params.name}')
+                    f'cannot find solution (going back) to quantize {params.name}')
             else:
                 break
 
@@ -811,6 +783,7 @@ class UnifiedQuantizer():
             'G': G,
             'force_scheme': force_scheme if force_scheme is not None else {},
             'force_options': force_options if force_options is not None else {},
+            'graph_update': {'requires_adjust': False}
         }
         state = StateClass.from_g(G, frozen_qs=frozen_qs)
         state.qrecs.scheme_priority = self.scheme_priority
@@ -826,4 +799,9 @@ class UnifiedQuantizer():
         else:
             for params in G.inputs():
                 self.quantize_forwards(G, state, params, **quant_kwargs)
+        G.quantization = state.qrecs
+        if quant_kwargs['graph_update']['requires_adjust']:
+            G.add_dimensions(quiet=True)
+            G.adjust_order()
+            G.add_dimensions(quiet=True)
         return state.qrecs

@@ -151,8 +151,6 @@ class FilterMult(MultQuantizionHandler):
         # if not padded we can scale asymmetric
         if in_q.dtype == np.uint8:
             # handle NE16
-            if in_q.forced:
-                return None
             cls.check_valid_ranges(params, stats, idx=0, dirs='in')
             # allow asymmetric if not padded
             if isinstance(params, Conv2DParameters) and params.padding.has_padding:
@@ -164,8 +162,6 @@ class FilterMult(MultQuantizionHandler):
                                              dtype=np.int8,
                                              zero_point=in_q.zero_point - 128)
         elif (isinstance(params, Conv2DParameters) and not in_q.is_symmetric and params.padding.has_padding):
-            if in_q.forced:
-                return None
             cls.check_valid_ranges(params, stats, idx=0, dirs='in')
             in_q = QType.from_min_max_sq(stats['range_in'][0]['min'], stats['range_in'][0]['max'],
                                          dtype=np.int8)
@@ -218,12 +214,38 @@ class FilterMult(MultQuantizionHandler):
         if not (opts['allow_asymmetric'] or force_out_q or biases_q.offset is None):
             raise ValueError(f'bias offset is set but asymmetric is disallowed in {params.name}')
 
+        # o_q.set_forced(flags=['dtype'])
+        # in_q.set_forced(flags=['dtype'])
+        if isinstance(params, Conv2DParameters) and params.padding.has_padding:
+            in_q.set_forced(flags=['zero_point'])
+
         cls.check_order(params, AT_SW_KER_IN_ORDER, AT_SW_KER_OUT_ORDER)
         return QRec.scaled(in_qs=[in_q, weights_q, biases_q],
                            out_qs=[o_q],
                            acc_q=biases_q,
                            calc_q=biases_q,
                            mul_biases_q=mul_biases_q)
+
+    @classmethod
+    def _get_in_qs_from_stats(cls, params, stats, in_qs, **kwargs):
+        opts = kwargs['opts']
+        fusion = kwargs.get('fusion', None)
+        return [QType.from_min_max_sq(stats['range_in'][idx]['min'],
+                                      stats['range_in'][idx]['max'],
+                                      dtype=np.uint8 if cls.can_ne16(params, opts, fusion) else np.int8,
+                                      asymmetric=in_qs[idx].is_asymmetric and cls.can_handle_asymmetric_input(params, **kwargs))
+                if dim is not None else None
+                for idx, dim in enumerate(params.in_dims)]
+
+    @classmethod
+    def can_handle_asymmetric_input(cls, params, **kwargs):
+        if isinstance(params, FcParameters):
+            return True
+        opts = kwargs['opts']
+        fusion = kwargs.get('fusion', None)
+        if cls.can_ne16(params, opts, fusion):
+            return True
+        return not params.padding.has_padding        
 
     @classmethod
     def get_min_max(cls, fusion, stats, all_stats, params):
@@ -276,8 +298,9 @@ class FilterMult(MultQuantizionHandler):
         in_q = in_qs[0]
         # check input quantization and scale asymmetric uint8
         if in_q.dtype != np.uint8:
-            if in_q.forced:
-                return None
+            # I ignore a force here which is not very clean
+            # if in_q.forced_dtype:
+            #     return None
             cls.check_valid_ranges(params, stats, idx=0, dirs='in')
             in_q = QType.from_min_max_sq(stats['range_in'][0]['min'], stats['range_in'][0]['max'],
                                          dtype=np.uint8,
@@ -312,6 +335,9 @@ class FilterMult(MultQuantizionHandler):
         # returning the new weights and biases qs will force backprop
 
         cls.check_order(params, AT_NE16_KER_IN_ORDER, AT_NE16_KER_OUT_ORDER)
+
+        # o_q.set_forced(flags=['dtype'])
+        # in_q.set_forced(flags=['dtype'])
         return QRec.scaled(in_qs=[in_q, weights_q, biases_q],
                            out_qs=[o_q],
                            acc_q=biases_q,

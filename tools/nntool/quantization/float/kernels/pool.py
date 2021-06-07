@@ -13,19 +13,18 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-from graph.types.pooling import AveragePoolParameters, MaxPoolParameters
 import logging
 from functools import reduce
 
 import numpy as np
-from graph.types import GlobalPoolParameters, PoolingParameters
+from graph.types import GlobalPoolParameters
+from graph.types.pooling import AveragePoolParameters, MaxPoolParameters
 from quantization.kernels.kernel_base import KernelBase, params_type, qrec_type
 from quantization.new_qrec import AllFloatQRec, QRec
 
 LOG = logging.getLogger("nntool." + __name__)
 
 # pylint: disable=too-many-arguments, too-many-locals
-
 
 @params_type(AveragePoolParameters)
 @qrec_type('float')
@@ -40,8 +39,7 @@ class AveragePoolingFloat(KernelBase):
             qrec = AllFloatQRec()
 
         in_tensor = qrec.prepare_inputs(params, in_tensors, ktype="float")[0]
-        in_dims = params.in_dims[0]
-        out_dims = params.out_dims[0]
+        in_dims, out_dims = tuple(dims[0] for dims in cls.calc_transposed_dims(params))
         filter_sz = params.filter.h * params.filter.w
 
         calc_dtype = qrec.out_qs[0].dtype if qrec.ktype.startswith(
@@ -84,6 +82,7 @@ class AveragePoolingFloat(KernelBase):
 
         return qrec.get_outputs(params, [out_tensor], ktype="float")
 
+
 @params_type(MaxPoolParameters)
 @qrec_type('float')
 class MaxPoolingFloat(KernelBase):
@@ -98,8 +97,7 @@ class MaxPoolingFloat(KernelBase):
             qrec = AllFloatQRec()
 
         in_tensor = qrec.prepare_inputs(params, in_tensors, ktype="float")[0]
-        in_dims = params.in_dims[0]
-        out_dims = params.out_dims[0]
+        in_dims, out_dims = tuple(dims[0] for dims in cls.calc_transposed_dims(params))
 
         calc_dtype = qrec.out_qs[0].dtype if qrec.ktype.startswith(
             'float') else np.float32

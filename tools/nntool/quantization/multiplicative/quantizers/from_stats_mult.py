@@ -17,7 +17,6 @@ from copy import deepcopy
 
 import numpy as np
 from graph.types import (BinaryOpParameters, GlobalPoolParameters,
-                         MatMulOpParameters,
                          MatrixBroadcastedLinearOpParameters,
                          MatScaleFusionParameters, UnaryOpParameters)
 from quantization.new_qrec import QRec
@@ -30,7 +29,7 @@ from quantization.unified_quantization_handler import (in_qs_constraint,
 from ..mult_quantization_handler import MultQuantizionHandler
 
 
-@params_type(MatrixBroadcastedLinearOpParameters, MatMulOpParameters,
+@params_type(MatrixBroadcastedLinearOpParameters,
              BinaryOpParameters, UnaryOpParameters,
              MatScaleFusionParameters, GlobalPoolParameters)
 @in_qs_constraint(MatchAll({'dtype': np.int8}))

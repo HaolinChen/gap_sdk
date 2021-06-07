@@ -96,7 +96,7 @@ class DrawGraphReporter():
             else:
                 trans = [''] * num_in
             ports[0] = [f'{node.name}:in{idx}' for idx in range(num_in)]
-            edges = [f'<in{idx}> {idx if num_in > 1 else ""}{trans[idx]}' for idx in range(num_in)]
+            edges = [f'<in{idx}> {idx if num_in > 1 else ""}{trans[idx] if idx < len(trans) else ""}' for idx in range(num_in)]
             names.append(edges)
             names.extend(node.graph_anon_label if anon else node.graph_label)
         else:
@@ -109,14 +109,14 @@ class DrawGraphReporter():
             else:
                 trans = [''] * num_out
             ports[1] = [f'{node.name}:o{idx}' for idx in range(num_out)]
-            edges = [f'<o{idx}> {idx if num_out > 1 else ""}{trans[idx]}' for idx in range(num_out)]
+            edges = [f'<o{idx}> {idx if num_out > 1 else ""}{trans[idx] if idx < len(trans) else ""}' for idx in range(num_out)]
             names.append(edges)
         else:
             if len(names) == 1:
                 ports[1] = [f'{node.name}:name']
             else:
                 ports[1] = [f'{node.name}:bottom']
-                DrawGraphReporter.insert_tag(-1, f'<bottom>', names)
+                DrawGraphReporter.insert_tag(-1, '<bottom>', names)
         names = [name if isinstance(
             name, str) else f'{{{"|".join(name)}}}' for name in names]
         names = f'{{{"|".join(name for name in names)}}}'
@@ -169,7 +169,8 @@ class DrawGraphReporter():
 
         self.init_name_cache()
         all_ports = {}
-        dot = Digraph(comment=G.graphname, format=graph_format, node_attr={
+        graph_name = G.graphname if hasattr(G, 'graphname') else 'graph'
+        dot = Digraph(comment=graph_name, format=graph_format, node_attr={
                       'height': '.1'}, edge_attr={'fontsize': '10.0'})
         fake_idx = 0
         for node in G.dfs():

@@ -45,8 +45,10 @@ class MatMul(PromoteLinearMixin, BackendHandler):
                                                          [y_shape[1], x_shape[0]]),
                                                      value=weights)
             params = FcParameters(valid_name, filt=filt_dim, has_bias=True,
+                                #   in_dims_hint=[
+                                #       ['c'], ['out_c', 'in_c'], ['out_c']],
                                   in_dims_hint=[
-                                      ['c'], ['out_c', 'in_c'], ['out_c']],
+                                      None, ['out_c', 'in_c'], ['out_c']],
                                   out_dims_hint=[['c']],
                                   constant_store=G.constant_store)
             out_dims = params.get_output_size([Dim.unnamed(x_shape)])

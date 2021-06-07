@@ -96,8 +96,7 @@ class ImageFormatParameters(Parameters, SingleInputAndOutput, SensitiveToOrder):
 
     def get_output_size(self, in_dims):
         assert len(in_dims) == 1
-        self.in_dims = self.clone_dim_with_hints(in_dims, hint_dir='in')
-        out_dim = self.clone_dim_with_hints(in_dims, hint_dir='out')[0]
+        out_dim = self.clone_dims_with_hints(in_dims, hint_dir='out')[0]
         if self.format_change == "RGB565_RGB888":
             assert out_dim.is_named and out_dim.c == 1
             out_dim.impose_order(self.out_dims_hint[0])

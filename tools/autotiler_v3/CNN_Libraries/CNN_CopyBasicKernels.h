@@ -48,6 +48,64 @@ typedef struct {
 	unsigned int H;                         /**< Tile height */
 } KerCopy_void_T;
 
+typedef struct {
+	unsigned short *__restrict__ In;           /**< Input matrix */
+	signed char *__restrict__ Out0;          /**< Output matrix */
+	signed char *__restrict__ Out1;          /**< Output matrix */
+	signed char *__restrict__ Out2;          /**< Output matrix */
+	unsigned int W;                         /**< Matrix width */
+	unsigned int H;                         /**< Matrix height */
+} KerNormRGB565_fps_T;
+
+typedef struct {
+	unsigned char *__restrict__ In;           /**< Input matrix */
+	signed char *__restrict__ Out0;          /**< Output matrix */
+	signed char *__restrict__ Out1;          /**< Output matrix */
+	signed char *__restrict__ Out2;          /**< Output matrix */
+	unsigned int W;                         /**< Matrix width */
+	unsigned int H;                         /**< Matrix height */
+} KerNormRGB888_fps_T;
+
+typedef struct {
+	unsigned char *__restrict__ In;         /**< Input matrix */
+	signed short int *__restrict__ Out0;    /**< Output matrix */
+	signed short int *__restrict__ Out1;    /**< Output matrix */
+	signed short int *__restrict__ Out2;    /**< Output matrix */
+	unsigned int W;                         /**< Matrix width */
+	unsigned int H;                         /**< Matrix height */
+} KerNormRGB16_fp_T;
+
+typedef struct {
+	unsigned char *__restrict__ In;           /**< Input matrix */
+	signed char *__restrict__ Out;          /**< Output matrix */
+	unsigned int W;                         /**< Matrix width */
+	unsigned int H;                         /**< Matrix height */
+} KerNormBW_fps_T;
+
+typedef struct {
+	unsigned char *__restrict__ In;         /**< Input matrix */
+	signed short int *__restrict__ Out;     /**< Output matrix */
+	unsigned int W;                         /**< Matrix width */
+	unsigned int H;                         /**< Matrix height */
+} KerNormBW_fp_T;
+
+
+typedef struct {
+	signed char *__restrict__ In;
+	unsigned char *__restrict__ Out;
+	unsigned short int W;
+	unsigned short int H;
+    signed char *__restrict__ Infos;
+} CNN_FpsFpu_T;
+
+typedef struct {
+	unsigned char *__restrict__ In;
+	signed char *__restrict__ Out;
+	unsigned short int W;
+	unsigned short int H;
+    signed char *__restrict__ Infos;
+} CNN_FpuFps_T;
+
 /*************************************************************************************************************************************************
 	List of Matrix Transposition
 *************************************************************************************************************************************************/
@@ -78,6 +136,16 @@ extern void CNN_MatPermCHW2WHC_fps(KerMatTranspose_fps_T *Arg);
 extern void CNN_MatPermCHW2WCH_fps(KerMatTranspose_fps_T *Arg);
 extern void CNN_MatPermCHW2HCW_fps(KerMatTranspose_fps_T *Arg);
 
+void CNN_NormRGB565_offset_fps(KerNormRGB565_fps_T *Arg);
+void CNN_NormRGB565_shift_fps(KerNormRGB565_fps_T *Arg);
+void CNN_NormRGB888_offset_fps(KerNormRGB888_fps_T *Arg);
+void CNN_NormRGB888_shift_fps(KerNormRGB888_fps_T *Arg);
+void CNN_NormRGB16_fp(KerNormRGB16_fp_T *Arg);
+void CNN_NormBW_offset_fps(KerNormBW_fps_T *Arg);
+void CNN_NormBW_shift_fps(KerNormBW_fps_T *Arg);
+void CNN_NormBW_fp(KerNormBW_fp_T *Arg);
+void CNN_FpuFps(CNN_FpuFps_T *Args);
+void CNN_FpsFpu(CNN_FpsFpu_T *Args);
 void CNN_Copy_void(KerCopy_void_T * Arg);
 
 #endif

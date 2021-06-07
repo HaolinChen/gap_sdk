@@ -50,9 +50,6 @@ class PieceWiseSymmetricMult(KernelBase):
                 qrec: QRec,
                 **kwargs):
         in_tensors = qrec.prepare_inputs(params, in_tensors, ktype="symmetric")
-        if params.transpose_in:
-            in_tensors = [(np.transpose(in_tensor, params.transpose_in[idx]) if params.transpose_in[idx] else in_tensor)
-                          for idx, in_tensor in enumerate(in_tensors)]
         if isinstance(params, Broadcastable) and params.is_broadcasted:
             in_tensors = params.broadcast_inputs(in_tensors)
         func = PIECEWISE_OPS[params.__class__]
@@ -76,8 +73,6 @@ class PieceWiseSymmetricMult(KernelBase):
                 i2 = in_tensors[1].astype(np.int32)
 
             out_tensor = scale_mul_biases_q.apply_scales(op(i1, i2, None))
-        if params.transpose_out:
-            out_tensor = np.transpose(out_tensor, params.transpose_out[0])
         return qrec.get_outputs(params, [qrec.out_qs[0].clip(out_tensor)], ktype="symmetric")
 
 
@@ -199,6 +194,8 @@ class MatMulScaled(KernelBase):
 
         in_tensors = [in_tensor.astype(np.int32) for in_tensor in qrec.prepare_inputs(
             params, in_tensors, ktype="symmetric")]
+
+
         if len(in_tensors) > 2:
             biases = in_tensors[2]
             if len(biases.shape) == 1:
@@ -206,11 +203,12 @@ class MatMulScaled(KernelBase):
         else:
             biases = 0
         
-        res = np.matmul(in_tensors[0], in_tensors[1]) + biases
+        out_tensor = np.matmul(in_tensors[0], in_tensors[1]) + biases
         mul_biases_q = qrec.cache['mul_biases_q']
-        res = mul_biases_q.apply_scales(res, 0).astype(qrec.out_qs[0].dtype)
+        scale_axis = None if len(mul_biases_q.scale) == 1 else 0
+        out_tensor = mul_biases_q.apply_scales(out_tensor, scale_axis).astype(qrec.out_qs[0].dtype)
 
-        return qrec.get_outputs(params, [res], ktype="symmetric")
+        return qrec.get_outputs(params, [out_tensor], ktype="symmetric")
 
 @params_type(MatMulOpParameters)
 @qrec_type('symmetric')
@@ -223,6 +221,7 @@ class MatMulSymmetric(KernelBase):
 
         in_tensors = [in_tensor.astype(np.int32) for in_tensor in qrec.prepare_inputs(
             params, in_tensors, ktype="symmetric")]
+
         if len(in_tensors) > 2:
             biases = in_tensors[2]
             if len(biases.shape) == 1:
@@ -231,7 +230,7 @@ class MatMulSymmetric(KernelBase):
             biases = 0
         # expect biases in in_q1 + in_q2
         q_calc = QType.Pow2(bits=32, q=qrec.in_qs[0].q + qrec.in_qs[1].q, signed=True)
-        res = np.matmul(in_tensors[0], in_tensors[1]) + biases
-        res = qrec.out_qs[0].reduce_from(res, q_calc)
+        out_tensor = np.matmul(in_tensors[0], in_tensors[1]) + biases
+        out_tensor = qrec.out_qs[0].reduce_from(out_tensor, q_calc)
 
-        return qrec.get_outputs(params, [res], ktype="symmetric")
+        return qrec.get_outputs(params, [out_tensor], ktype="symmetric")

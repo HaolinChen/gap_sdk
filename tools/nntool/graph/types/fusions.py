@@ -19,7 +19,7 @@ import logging
 
 from ..dim import Dim
 from .base import (FilterParameters, NNEdge, NodeOptions, Parameters,
-                   SensitiveToOrder, SingleInputAndOutput, cls_op_name)
+                   SensitiveToOrder, SingleInputAndOutput, Transposable, cls_op_name)
 
 LOG = logging.getLogger("nntool." + __name__)
 
@@ -193,7 +193,6 @@ class FusionBase(Parameters):
         return 0
 
     def get_output_size(self, in_dims):
-        self.in_dims = self.clone_dim_with_hints(in_dims)
         node_out_dims = []
         for node in self.subgraph.dfs():
             if isinstance(node, FusionInputParameters):
@@ -210,7 +209,6 @@ class FusionBase(Parameters):
             node.out_dims = out_dims
             if isinstance(node, FusionOutputParameters):
                 insert_ext(node_out_dims, out_dims[0], node.idx)
-        self.out_dims = node_out_dims
         return node_out_dims
 
     @staticmethod
@@ -234,7 +232,7 @@ class MatScaleFusionParameters(FusionBase, SensitiveToOrder):
 
 
 @cls_op_name('conv_fusion')
-class ConvFusionParameters(FusionBase, SingleInputAndOutput, SensitiveToOrder):
+class ConvFusionParameters(FusionBase, SingleInputAndOutput, SensitiveToOrder, Transposable):
     '''Fusion of operators. At present restricted to single input and output but
     this could be removed perhaps'''
 
@@ -316,7 +314,7 @@ class PaddedAddFusionParameters(FusionBase, SensitiveToOrder):
 
 
 @cls_op_name('matmulop_fusion')
-class MatMulOpFusionParameters(FusionBase, SingleInputAndOutput, SensitiveToOrder):
+class MatMulOpFusionParameters(FusionBase, SingleInputAndOutput, SensitiveToOrder, Transposable):
     '''Fusion of operators. At present restricted to single input and output but
     this could be removed perhaps'''
 
@@ -328,12 +326,21 @@ class MatMulOpFusionParameters(FusionBase, SingleInputAndOutput, SensitiveToOrde
         self._at_options.extend(
             *[node.at_options for node in self.contained_nodes()])
 
+    def get_output_size(self, in_dims):
+        in_dims = self.apply_transposes('in', in_dims)
+        out_dims = super(MatMulOpFusionParameters, self).get_output_size(in_dims)
+        out_dims = self.apply_transposes('out', out_dims)
+        return out_dims
+
     @property
     def graph_label(self):
         label = [self.name]
         for node in self.contained_nodes():
             inner_label = node.graph_label[1::]
-            label.extend(inner_label)
+            if inner_label:
+                label.extend(inner_label)
+            else:
+                label.append(node.CLS_OP_NAME)
         return label
 
     @property

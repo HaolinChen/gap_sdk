@@ -16,9 +16,19 @@
 
 import numpy as np
 
-from ..symbol import Constant
+from ..symbol import Constant, Symbol
 
 
 class QuantizedConstant(Constant):
     def __init__(self, *args, dtype=np.int32, **kwargs):
         super().__init__(*args, dtype=dtype, **kwargs)
+
+class QuantizedValue(Symbol):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+    def _calculate(self, calculate_ranges=False, **kwargs):
+        raise ValueError('wrapper class for quantization purposes - not designed to be evaluated')
+
+    def _impl(self, *args, **kwargs):
+        raise ValueError('wrapper class for quantization purposes - not designed to be evaluated')

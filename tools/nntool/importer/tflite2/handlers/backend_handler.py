@@ -92,7 +92,7 @@ class BackendHandler(Handler):
         #     return add_node(self.G, node)
         aparams = None
         if tfl_opts.FusedActivationFunction() == ActivationFunctionType.NONE:
-            if node_qrec is not None and node_qrec.ktype.startswith('scaled'):
+            if node_qrec is not None and node_qrec.ktype.startswith('scaled'): # and opts.get('insert_relus'):
                 # here we have no activation in an asymmetric qtype -> may be an omitted relu
                 if node_qrec.out_qs[0] is not None and node_qrec.out_qs[0].min_val == 0:
                     if np.all(np.round(node_qrec.out_qs[0].max_val) == 6):

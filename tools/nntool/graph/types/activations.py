@@ -210,15 +210,12 @@ class SoftMaxParameters(Transposable, SingleInputAndOutput):
         return self.in_dims[0].size() * 2
 
     def get_output_size(self, in_dims):
-        self.in_dims = self.clone_dim_with_hints(in_dims)
         if self.axis is None:
             self.axis = len(in_dims[0]) - 1
         if self.transpose_in:
             in_dims = [dim.calc_transpose(trans) if trans is not None else dim
-                       for dim, trans in zip(self.in_dims, self.transpose_in)]
-        else:
-            in_dims = self.in_dims
-        out_dim = self.in_dims[0]
+                       for dim, trans in zip(in_dims, self.transpose_in)]
+        out_dim = in_dims[0]
         if self.transpose_out and self.transpose_out[0]:
             out_dim.transpose(self.transpose_out[0])
         return [out_dim]

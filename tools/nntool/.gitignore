@@ -14,3 +14,4 @@ tmp/
 importer/tflite
 .env
 gsync
+tempdir/

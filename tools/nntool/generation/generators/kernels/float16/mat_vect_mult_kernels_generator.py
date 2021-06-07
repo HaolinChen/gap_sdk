@@ -14,36 +14,45 @@
 
 import logging
 
+import numpy as np
 from generation.at_types.at_params import NO_ACTIVATION, gen_active_at_params
 from generation.at_types.gen_ctrl import GenCtrl
 from generation.code_block import CodeBlock
-from generation.generator_decorators import (QREC_MULT8,
-                                                        generation_function)
+from generation.generator_decorators import QREC_FLOAT, generation_function
 from graph.types import ActivationFusion, MatrixMulParameters
 
-from ..autotiler_kernel import (AutotilerKernel, gen_include_paths,
-                                gen_includes, gen_sources,
-                                kernel_include_paths, kernel_includes,
-                                kernel_sources)
+from ..autotiler_kernel import AutotilerKernel
 
 LOG = logging.getLogger("nntool." + __name__)
 
 MAT_VECT_MUL_OPER = "KOP_MATVECTMUL"
 
+def validate_kernel(node):
+    shape1 = node.in_dims[0]
+    shape2 = node.in_dims[1]
+    if len(shape1) != 3 or len(shape1) != len(shape2):
+        return None
+    if np.prod(shape1) == shape2[0]:
+        return 0
+    if np.prod(shape1) == shape2[0]:
+        return 1
+    return None
 
-@generation_function("kernels", (MatrixMulParameters, ActivationFusion), qrec_types=(QREC_MULT8, ))
+@generation_function("kernels", (MatrixMulParameters, ActivationFusion), qrec_types=(QREC_FLOAT, ))
 def mat_vect_mult_kernel_generator_fp16(gen, node, qrec, in_eparams, out_eparams, cname):
     del in_eparams, out_eparams, qrec
     if isinstance(node, ActivationFusion):
         cnodes = node.contained_nodes()
-        if isinstance(cnodes[0], MatrixMulParameters):
+        if isinstance(cnodes[0], MatrixMulParameters) and validate_kernel(cnodes[0]) is not None:
             gen.kernels.append(MatVectMulKernel(node.name, cname, cnodes[0], cnodes[1],
                                                 at_ver=gen.opts['at_ver'], force_relu=gen.force_relu))
             return True
         return False
-    gen.kernels.append(MatVectMulKernel(node.name, cname, node, None, at_ver=gen.opts['at_ver'],
-                                        force_relu=gen.force_relu))
-    return True
+    elif validate_kernel(node) is not None:
+        gen.kernels.append(MatVectMulKernel(node.name, cname, node, None, at_ver=gen.opts['at_ver'],
+                                            force_relu=gen.force_relu))
+        return True
+    return False
 
 
 def gen_mat_vect_mul_sq8(code_block, cname, ctrl, feat, width, height, act_oper):
@@ -54,21 +63,6 @@ def gen_mat_vect_mul_sq8(code_block, cname, ctrl, feat, width, height, act_oper)
                                                                                        act_oper))
 
 
-@kernel_sources(
-    '$(TILER_CNN_KERNEL_PATH_SQ8)/CNN_MatAlgebra_SQ8.c')
-@kernel_include_paths(
-    '$(TILER_CNN_KERNEL_PATH)',
-    '$(TILER_CNN_KERNEL_PATH_SQ8)')
-@kernel_includes(
-    'CNN_BasicKernels_SQ8.h')
-@gen_sources(
-    '$(TILER_CNN_GENERATOR_PATH)/CNN_Generator_Util.c',
-    '$(TILER_CNN_GENERATOR_PATH_SQ8)/CNN_Generators_SQ8.c')
-@gen_include_paths(
-    '$(TILER_CNN_GENERATOR_PATH)',
-    '$(TILER_CNN_GENERATOR_PATH_SQ8)')
-@gen_includes(
-    'CNN_Generators_SQ8.h')
 class MatVectMulKernel(AutotilerKernel):
     def __init__(self, node_name, cname, tens_vect_mul_params, act_params, at_ver=3, gen_ctrl=None, force_relu=True):
         if gen_ctrl is None:

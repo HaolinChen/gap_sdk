@@ -135,6 +135,14 @@ class AttrNamespace:
         self.__dict__.update(state)
 
 
+FORCED_FLAGS = [
+    'q',
+    'dtype',
+    'zero_point',
+    'scale',
+]
+
+
 class QType(JsonSerializable, EventEmitter):
     EXPORT = [
         'q',
@@ -163,7 +171,7 @@ class QType(JsonSerializable, EventEmitter):
         self._zero_point = np.atleast_1d(zero_point)
         self._quantized_dimension = quantized_dimension
         self._narrow_range = narrow_range
-        self._forced = forced
+        self._forced = {k: True for k in FORCED_FLAGS} if forced else {}
         self._offset = None
         self._attr = AttrNamespace(**kwargs)
         self._is_constant = None
@@ -246,20 +254,59 @@ class QType(JsonSerializable, EventEmitter):
 
     @property
     def forced(self):
-        return self._forced
-
-    def set_forced(self):
-        self._forced = True
-        return self
+        return any(self._forced.values())
 
     @property
-    def is_pow2(self):
-        return self._q is not None and self._scale is None
+    def forced_flags(self):
+        return self._forced
+
+    @property
+    def forced_q(self):
+        return self._forced.get('q')
+
+    @property
+    def forced_zero_point(self):
+        return self._forced.get('zero_point')
+
+    @property
+    def forced_dtype(self):
+        return self._forced.get('dtype')
+
+    @property
+    def forced_scale(self):
+        return self._forced.get('scale')
+
+    def set_forced(self, val=True, flags=None):
+        if flags is None:
+            flags = FORCED_FLAGS
+        for flag in flags:
+            self._forced[flag] = val
+        return self
+
+    def can_force(self, *others):
+        for other in others:
+            if not all(not other.forced_flags.get(flag) or getattr(self, flag) == getattr(other, flag)
+                       for flag in self.forced_flags):
+                return False
+        return True
+
+    @classmethod
+    def forced_equal(cls, *args):
+        if len(args) < 2:
+            return True
+        forced = set([k for qtype in args for k,
+                      v in qtype.forced_flags.items() if v])
+        return all(all(getattr(args[0], force_flag) == getattr(other, force_flag)
+                       for force_flag in forced)
+                   for other in args[1::])
 
     @property
     def is_sq(self):
         return self._scale is not None
 
+    @property
+    def is_pow2(self):
+        return self._q is not None
 
     @property
     def is_asymmetric(self):
@@ -464,7 +511,8 @@ class QType(JsonSerializable, EventEmitter):
             #     )
             # ).astype(np.int64)
             if len(zero_point_from_min_error) != 1:
-                raise ValueError('asymmetric on dimension scaled tensors is not supported')
+                raise ValueError(
+                    'asymmetric on dimension scaled tensors is not supported')
             if zero_point_from_min_error < zero_point_from_max_error:
                 zero_point = zero_point_from_min
             else:
@@ -657,7 +705,7 @@ class QType(JsonSerializable, EventEmitter):
         # cope with properly representing 0
         iinfo = np.iinfo(dtype)
         qrange = iinfo.max - iinfo.min
-        mid = qrange // 2 + (1 if qrange%2 else 0)
+        mid = qrange // 2 + (1 if qrange % 2 else 0)
         qmin = -mid
         qmax = qrange - mid
         # max offset by the min asymmetric amount

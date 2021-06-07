@@ -1180,6 +1180,7 @@ vp::io_req_status_e Semaphore_unit::req(vp::io_req *req, uint64_t offset, bool i
         *data = semaphore->value;
         semaphore->set_value(semaphore->value - 1);
         semaphore->trace_value.event((uint8_t *)&semaphore->value);
+        req->inc_latency(EU_WAKEUP_LATENCY);
         this->trace.msg("Decrementing semaphore (semaphore: %d, coreId: %d, new_value: %d)\n", id, core);
       }
       else
@@ -1203,6 +1204,7 @@ vp::io_req_status_e Semaphore_unit::req(vp::io_req *req, uint64_t offset, bool i
       semaphore->set_value(semaphore->value + 1);
       this->trace.msg("Incrementing semaphore (semaphore: %d, core: %d, value: %d)\n", id, core, semaphore->value);
       semaphore->trace_value.event((uint8_t *)&semaphore->value);
+      req->inc_latency(EU_WAKEUP_LATENCY);
     }
   }
 
@@ -1392,7 +1394,6 @@ vp::io_req_status_e Mutex_unit::req(vp::io_req *req, uint64_t offset, bool is_wr
   offset = offset - (id << 2);
   if (id >= nb_mutexes) return vp::IO_REQ_INVALID;
 
-  
   Mutex *mutex = &mutexes[id];
   Core_event_unit *evtUnit = &top->core_eu[core];
   top->trace.msg("Received mutex IO access (offset: 0x%x, mutex: %d, is_write: %d)\n", offset, id, is_write);
@@ -1401,6 +1402,8 @@ vp::io_req_status_e Mutex_unit::req(vp::io_req *req, uint64_t offset, bool is_wr
   {
     if (!mutex->locked)
     {
+      req->inc_latency(EU_WAKEUP_LATENCY);
+  
       // The mutex is free, just lock it
       top->trace.msg("Locking mutex (mutex: %d, coreId: %d)\n", id, core);
       mutex->locked = 1;

@@ -133,12 +133,14 @@ class ExpressionFusionParameters(FusionBase):
                  len(intermediates), len(outputs))
 
         expressions = []
-        inter_vars = {node: Variable(node.name, shape=node.dims.shape) for node in inputs}
+        inter_vars = {node: Variable(
+            node.name, shape=node.dims.shape) for node in inputs}
         # TODO - Intermediates are not sorted here so there may be interdependences
         for node in intermediates:
             # This assumes that all contained nodes output on idx 0 which is
             # ok for now
-            variable = Variable(f'inter_{node.name}', shape=node.out_dims[0].shape)
+            variable = Variable(
+                f'inter_{node.name}', shape=node.out_dims[0].shape)
             self.set_min_max(qrecs, variable, node)
             expr = self.compose_expression(self.subgraph,
                                            node,
@@ -149,7 +151,8 @@ class ExpressionFusionParameters(FusionBase):
             expressions.append(expr)
 
         for node in outputs:
-            expr = self.compose_expression(self.subgraph, node, inter_vars, qrecs=qrecs)
+            expr = self.compose_expression(
+                self.subgraph, node, inter_vars, qrecs=qrecs)
             expressions.append(expr)
 
         # sort the inputs by idx

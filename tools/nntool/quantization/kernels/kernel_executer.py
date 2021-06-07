@@ -18,8 +18,10 @@ from typing import Sequence
 
 import numpy as np
 from graph.types import Parameters
+from graph.types.base import Transposable
 from quantization.handlers_helpers import get_all_subclasses
 from quantization.new_qrec import AllFloatQRec, QRec
+from sklearn.utils import Parallel
 
 # pylint: disable=wildcard-import,unused-wildcard-import
 from ..float.kernels import *  # noqa
@@ -28,7 +30,6 @@ from .fusion_inout import *  # noqa
 from .kernel_base import KernelBase
 
 LOG = logging.getLogger("nntool." + __name__)
-
 
 
 def get_all_backend_handlers():
@@ -43,14 +44,17 @@ def get_all_backend_handlers():
                 handlers.setdefault(params_cls, {})[qrec_type_name] = handler
     return handlers
 
+
 HANDLERS = get_all_backend_handlers()
+
 
 class KernelExecuter():
     @classmethod
     def execute(cls, params: Parameters, input_tensors: Sequence[np.ndarray],
                 qrec: QRec, details: str = None) -> Sequence[np.ndarray]:
         if params.__class__ not in HANDLERS:
-            raise ValueError(f"no handlers found for {params.__class__.__name__}")
+            raise ValueError(
+                f"no handlers found for {params.__class__.__name__}")
         handlers = HANDLERS[params.__class__]
         if qrec is None:
             qrec = AllFloatQRec()
@@ -58,8 +62,18 @@ class KernelExecuter():
         if handler is None:
             handler = handlers.get('any')
         if handler is None:
-            raise ValueError(f"no handlers found for {params.__class__.__name__} quantization {qrec.ktype}")
+            raise ValueError(
+                f"no handlers found for {params.__class__.__name__} quantization {qrec.ktype}")
 
-        return handler.execute(params, input_tensors,
-                               qrec, details=details,
-                               qname=qrec.ktype)
+        if isinstance(params, Transposable) and params.transpose_in:
+            input_tensors = [(np.transpose(in_tensor, params.transpose_in[idx]) if params.transpose_in[idx] else in_tensor)
+                             for idx, in_tensor in enumerate(input_tensors)]
+
+        output_tensors = handler.execute(params, input_tensors,
+                                         qrec, details=details,
+                                         qname=qrec.ktype)
+
+        if isinstance(params, Transposable) and params.transpose_out:
+            output_tensors = [(np.transpose(out_tensor, params.transpose_out[idx]) if params.transpose_out[idx] else out_tensor)
+                              for idx, out_tensor in enumerate(output_tensors)]
+        return output_tensors

@@ -17,13 +17,11 @@ from copy import deepcopy
 from typing import cast
 
 import numpy as np
-from numpy.lib.arraysetops import isin
-
 from graph.types import QuantizeParameters
-
 from quantization.new_qrec import QRec
 from quantization.qtype import QType
-from quantization.unified_quantization_handler import params_type, out_qs_constraint
+from quantization.unified_quantization_handler import (out_qs_constraint,
+                                                       params_type)
 
 from ..mult_quantization_handler import MultQuantizionHandler
 
@@ -62,15 +60,16 @@ class HandleQuantizeMult(MultQuantizionHandler):
         in_q = in_qs[0]
         if force_out_q:
             o_q = deepcopy(force_out_q)
+            o_q.set_forced(False)
             if params.to_qtype.dtype == np.uint8 and in_q.dtype == np.int8:
                 in_zero_point = o_q.zero_point - 128
-                if in_q.forced and in_q.zero_point != in_zero_point:
+                if in_q.forced_zero_point and in_q.zero_point != in_zero_point:
                     return None
                 in_q = QType(scale=o_q.scale, min_val=o_q.min_val, max_val=o_q.max_val,
                              dtype=in_q.dtype, zero_point=in_zero_point)
             elif params.to_qtype.dtype == np.int8 and in_q.dtype == np.uint8:
                 in_zero_point = o_q.zero_point + 128
-                if in_q.forced and in_q.zero_point != in_zero_point:
+                if in_q.forced_zero_point and in_q.zero_point != in_zero_point:
                     return None
                 in_q = QType(scale=o_q.scale, min_val=o_q.min_val, max_val=o_q.max_val,
                              dtype=in_q.dtype, zero_point=in_zero_point)
@@ -85,7 +84,7 @@ class HandleQuantizeMult(MultQuantizionHandler):
 
             # moving to NE16
             if o_dtype == np.uint8 and in_q.dtype == np.int8:
-                if in_q.forced:
+                if in_q.forced_zero_point:
                     # if input is forced then match input zero point so that the scale also matches
                     in_zero_point = in_q.zero_point if in_q.zero_point is not None else np.array([
                                                                                                  0])
@@ -105,7 +104,7 @@ class HandleQuantizeMult(MultQuantizionHandler):
                     in_q = QType(scale=o_q.scale, min_val=o_q.min_val, max_val=o_q.max_val,
                                  dtype=in_q.dtype, zero_point=in_zero_point)
             elif o_dtype == np.int8 and in_q.dtype == np.uint8:
-                if in_q.forced:
+                if in_q.forced_zero_point:
                     # if input is forced then match input zero point so that the scale also matches
                     out_zero_point = in_q.zero_point - 128
                     o_q = QType(min_val=stats['range_out'][0]['min'],

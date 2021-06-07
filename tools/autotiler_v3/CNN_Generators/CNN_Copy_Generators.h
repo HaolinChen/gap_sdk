@@ -108,4 +108,20 @@ int CNN_Copy(
 	int Sz
 );
 
+int CNN_Norm(
+	char *Name,
+
+	int Width,
+	int Height,
+	int DoOffset,
+	KernelOper_T kop
+);
+
+int CNN_SignedUnsigned(
+	char *Name,
+    int In_DataSize,
+	int Out_DataSize,
+	int Sz
+);
+
 #endif

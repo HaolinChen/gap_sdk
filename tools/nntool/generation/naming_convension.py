@@ -120,7 +120,7 @@ class DefaultNamingConvension(NamingConvension):
         if hasattr(node, 'short_name') and node.short_name:
             return self._get_step_name(node.short_name.capitalize(), step_idx)
         if edge_type == "in":
-            return f"S{step_idx}_{node_name.capitalize()}"
+            return f"{node_name.capitalize()}"
         if edge_type == "out":
             if self.G.num_out_edges(node_name):
                 return self.G.out_edges(node_name)[0].to_node.name.capitalize()

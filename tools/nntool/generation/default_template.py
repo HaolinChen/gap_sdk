@@ -89,7 +89,6 @@ ${gen.memory_device_generator(indent=1)}
 
 ${gen.load_basic_kernel_library(indent=1)}
 ${gen.load_expressions_library(indent=1)}
-    LoadNNTools_Extra_Library();
 
 ${gen.kernel_generator(indent=1)}
 
@@ -154,6 +153,10 @@ ${gen.expressions_kernel_prototypes_generator()}
 @stringfunction
 def generator_expressions_basic_kernel_source(G, gen):
     '''
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wextra"
+#pragma GCC diagnostic ignored "-Wpointer-sign"
+#pragma GCC diagnostic ignored "-Wsign-compare"
 ${gen.expressions_kernel_header_includes_generator(indent=0)}
 
 static int CoreCountDynamic = 1;
@@ -178,6 +181,8 @@ static inline unsigned int __attribute__((always_inline)) ChunkSize(unsigned int
 #define ATLShift(x, n)  ((x) << (n))
 
 ${gen.expressions_kernel_source_generator()}
+
+#pragma GCC diagnostic pop
 '''
 
 def execute_template(template_function, G, naming_convension=None, code_generator=None):

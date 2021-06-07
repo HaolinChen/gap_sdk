@@ -108,12 +108,9 @@ class MatrixBroadcastedLinearOpParameters(CanFuseToExpression, Transposable,
         return self.out_dims[0].size() * 2
 
     def get_output_size(self, in_dims):
-        self.in_dims = self.clone_dim_with_hints(in_dims)
         if self.transpose_in:
             in_dims = [dim.calc_transpose(trans) if trans is not None else dim
-                       for dim, trans in zip(self.in_dims, self.transpose_in)]
-        else:
-            in_dims = self.in_dims
+                       for dim, trans in zip(in_dims, self.transpose_in)]
         if self.broadcast is None:
             self.set_broadcast([dim.shape for dim in in_dims])
         out_dim = Dim.broadcast(in_dims)
@@ -161,14 +158,7 @@ class MatrixAddParameters(MatrixBroadcastedLinearOpParameters):
 @expression_op(Mul)
 @cls_op_name('mul')
 class MatrixMulParameters(MatrixBroadcastedLinearOpParameters):
-    TEST_MODE = False
-
-    def should_fuse(self, node_set, qrec=None):
-        if self.TEST_MODE:
-            return True
-        if qrec and qrec.ktype == 'symmetric':
-            return True
-        return super().should_fuse(node_set, qrec=qrec) and (len(node_set) > 1 or self.in_dims[0].layout_shape != self.in_dims[1].layout_shape)
+    pass
 
 
 @cls_op_name('sub')
@@ -203,12 +193,9 @@ class MatMulOpParameters(Transposable):
         return self.out_dims[0].size() * 2
 
     def get_output_size(self, in_dims):
-        self.in_dims = self.clone_dim_with_hints(in_dims)
         if self.transpose_in:
             in_dims = [dim.calc_transpose(trans) if trans is not None else dim
-                       for dim, trans in zip(self.in_dims, self.transpose_in)]
-        else:
-            in_dims = self.in_dims
+                       for dim, trans in zip(in_dims, self.transpose_in)]
         x_shape = list(in_dims[0].shape).copy()
         y_shape = list(in_dims[1].shape).copy()
 

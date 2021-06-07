@@ -49,10 +49,7 @@ def balance_filter(weights, biases, pnode, precision_threshold=None,
     weights /= scale.reshape(weights_shape)
     biases /= scale
     mul_bias *= scale
-    if G:
-        G.changes.modify(pnode, 'has_mul_bias', True, fnode=fnode)
-    else:
-        node.has_mul_bias = True
+    node.has_mul_bias = True
     node.mul_biases = mul_bias
     return True, weights, biases
 

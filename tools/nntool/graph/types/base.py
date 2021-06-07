@@ -15,13 +15,14 @@
 
 import logging
 from abc import abstractmethod
-from typing import Union
+from typing import Sequence, Union
 
+from expressions.symbolic.symbol import Symbol
 from generation.at_types.gen_ctrl import CTRL_FEATURES, GenCtrl
+from graph.dim import Dim
 
 from utils.graph import Edge, Node
 from utils.option_list import OptionList
-from expressions.symbolic.symbol import Symbol
 
 LOG = logging.getLogger("nntool." + __name__)
 
@@ -39,6 +40,26 @@ class NodeOptions(OptionList):
         super(NodeOptions, self).__init__(*args, **kwargs)
 
 # pylint: disable=too-many-instance-attributes
+
+
+def clone_dims(dims: Sequence[Dim], hints: Sequence[Dim]):
+    cloned_dims = []
+    for dim_idx, dim in enumerate(dims):
+        if dim is None:
+            cloned_dims.append(None)
+            continue
+        assert hasattr(dim, 'clone'), "no clone attribute - probably not a dim"
+        cloned_dim = dim.clone()
+        if hints and len(hints) > dim_idx and hints[dim_idx]:
+            hint = hints[dim_idx]
+            # this is a nasty hack to cope with linear layers that can take in_dims
+            # that are a different length to their hint which will be 'c'
+            if len(hint) == len(cloned_dim):
+                cloned_dim.apply_naming_hints(hints[dim_idx])
+            elif not cloned_dim.is_named:
+                raise ValueError(f'hint length {hint} != dim length {cloned_dim}')
+        cloned_dims.append(cloned_dim)
+    return cloned_dims
 
 
 class Parameters(Node):
@@ -214,6 +235,14 @@ class Parameters(Node):
     def can_equalize(self):
         pass
 
+    def set_input_size(self, dims: Sequence[Dim]):
+        self.in_dims = clone_dims(dims, self.in_dims_hint)
+        return self.in_dims
+
+    def set_output_size(self, dims: Sequence[Dim]):
+        self.out_dims = clone_dims(dims, self.out_dims_hint)
+        return self.out_dims
+
     def clone_dim_with_hint(self, dim, hint_idx, hint_dir="in"):
         if hint_dir == "in":
             hints = self._in_dims_hint
@@ -228,7 +257,7 @@ class Parameters(Node):
                 cloned_dim.apply_naming_hints(hint)
             return cloned_dim
 
-    def clone_dim_with_hints(self, dims, hint_dir="in", hint_idx=None):
+    def clone_dims_with_hints(self, dims, hint_dir="in", hint_idx=None):
         if hint_dir == "in":
             hints = self._in_dims_hint
         else:
@@ -275,7 +304,9 @@ class Parameters(Node):
     def __repr__(self):
         return f'{self.__class__.__name__}({self.name})'
 
+
 cls_op_name = Parameters.cls_op_name
+
 
 class InsensitiveToQuantization():
     '''Mixin that indicates that node does not carry out arithmetic on tensor and is insenitive to quantization'''
@@ -425,6 +456,13 @@ class Transposable(Parameters):
     @property
     def has_transpose(self):
         return bool(self.transpose_in or self.transpose_out)
+
+    def apply_transposes(self, direction, dims: Sequence[Dim]):
+        trans = getattr(self, f'transpose_{direction}')
+        if trans:
+            return [dim.calc_transpose(trans[idx]) if trans[idx] else dim
+                    for idx, dim in enumerate(dims)]
+        return dims
 
     def __str__(self):
         trans = []

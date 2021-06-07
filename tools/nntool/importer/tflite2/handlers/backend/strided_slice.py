@@ -14,6 +14,8 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 
+import math
+import sys
 from graph.types.input_output import ConstantInputParameters
 from graph.dim import Dim
 from graph.types import (NNEdge, NoOPParameters, ReshapeParameters,
@@ -27,6 +29,12 @@ from utils.node_id import NodeId
 
 from ..backend_handler import BackendHandler
 from ..handler import tflite_op
+
+BEGIN = 0
+END = 1
+ELLIPSIS = 2
+NEW_AXIS = 3
+SHRINK_AXIS = 4
 
 def get_slice(in_shape, spec, begin_mask, end_mask, ellipsis_mask, new_axis_mask, shrink_axis_mask):
     # reduces the TFLITE specs and masks down to regularized slice list without any
@@ -47,14 +55,14 @@ def get_slice(in_shape, spec, begin_mask, end_mask, ellipsis_mask, new_axis_mask
             in_idx += 1
             continue
 
-        if mask[2]:
+        if mask[ELLIPSIS]:
             for _ in range(len(in_shape) - (len(spec) - idx) + 1):
                 act_slice.append((0, in_shape[in_idx], 1))
                 out_shape.append(in_shape[in_idx])
                 out_slice_shape.append(in_shape[in_idx])
                 in_idx += 1
             continue
-        if mask[4]:
+        if mask[SHRINK_AXIS]:
             if in_shape[in_idx] > 1:
                 can_reshape = False
             if sz[0] < 0:
@@ -65,21 +73,29 @@ def get_slice(in_shape, spec, begin_mask, end_mask, ellipsis_mask, new_axis_mask
             out_slice_shape.append(1)
             in_idx += 1
             continue
-        if mask[3]:
+        if mask[NEW_AXIS]:
             out_shape.append(1)
             continue
 
-        beg = 0 if mask[0] else (
-            sz[0] if sz[0] >= 0 else in_shape[in_idx] + sz[0])
-        end = in_shape[in_idx] if mask[1] else (
-            sz[1] if sz[1] >= 0 else in_shape[in_idx] + sz[1])
+        # if the stride is negative the max range is reversed
+        # -sys.maxsize in the second dimension indicates that the slice is to the 0 item
+        if sz[2] < 0:
+            beg = (in_shape[in_idx] - 1) if mask[BEGIN] else (
+                sz[0] if sz[0] >= 0 else in_shape[in_idx] + sz[0])
+            end = -sys.maxsize if mask[END] else (
+                sz[1] if sz[1] >= 0 else in_shape[in_idx] + sz[1])
+        else:
+            beg = 0 if mask[BEGIN] else (
+                sz[0] if sz[0] >= 0 else in_shape[in_idx] + sz[0])
+            end = in_shape[in_idx] if mask[END] else (
+                sz[1] if sz[1] >= 0 else in_shape[in_idx] + sz[1])
 
         act_slice.append((
             beg,
             end,
             sz[2]
         ))
-        out_dim = (end - beg)//abs(sz[2])
+        out_dim = math.ceil((end - beg)/sz[2])
         out_shape.append(out_dim)
         out_slice_shape.append(out_dim)
         if beg != 0 or end != in_shape[in_idx] or sz[2] != 1:
@@ -146,7 +162,7 @@ class StridedSlice(ConstantMixin, BackendHandler):
                 # if the slice has changed the shape then do this separately with a reshape
                 G.add_edge(NNEdge(from_node=x[0], to_node=params, from_idx=x[1], to_idx=0))
                 if out_slice_shape != out_shape:
-                    rparams = ReshapeParameters(G.get_unique_name(node.name), old_shape=out_slice_shape, shape=out_shape)
+                    rparams = ReshapeParameters(G.unique_name(node.name), old_shape=out_slice_shape, shape=out_shape)
                     G.add_edge(NNEdge(from_node=params, to_node=rparams))
                     params = rparams
 

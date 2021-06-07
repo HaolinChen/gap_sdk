@@ -31,13 +31,14 @@ class BilinearResizerSymmetric(KernelBase):
                 **kwargs):
         in_tensor = qrec.prepare_inputs(
             params, in_tensors, ktype="symmetric")[0]
+        in_dims, out_dims = cls.calc_transposed_dims(params)
         in_tensor = in_tensor.transpose(
-            params.in_dims[0].transpose_to_order(("h", "w", "c")))
-        w_out = params.out_dims[0].w
-        h_out = params.out_dims[0].h
-        c_out = params.out_dims[0].c
-        w_in = params.in_dims[0].w
-        h_in = params.in_dims[0].h
+            in_dims[0].transpose_to_order(("h", "w", "c")))
+        w_out = out_dims[0].w
+        h_out = out_dims[0].h
+        c_out = out_dims[0].c
+        w_in = in_dims[0].w
+        h_in = in_dims[0].h
         wstep = ((w_in - 1) << 16) // w_out
         hstep = ((h_in - 1) << 16) // h_out
         hcoeff = wcoeff = 0
@@ -63,7 +64,7 @@ class BilinearResizerSymmetric(KernelBase):
             hcoeff += hstep
 
         out_tensor = out_tensor.transpose(
-            params.out_dims[0].transpose_from_order(("h", "w", "c")))
+            out_dims[0].transpose_from_order(("h", "w", "c")))
         return qrec.get_outputs(params, [out_tensor], ktype="symmetric")
 
 
@@ -77,13 +78,14 @@ class NearestNeighbourResizerSymmetric(KernelBase):
                 **kwargs):
         in_tensor = qrec.prepare_inputs(
             params, in_tensors, ktype="symmetric")[0]
+        in_dims, out_dims = cls.calc_transposed_dims(params)
         in_tensor = in_tensor.transpose(
-            params.in_dims[0].transpose_to_order(("h", "w", "c")))
-        w_out = params.out_dims[0].w
-        h_out = params.out_dims[0].h
-        c_out = params.out_dims[0].c
-        w_in = params.in_dims[0].w
-        h_in = params.in_dims[0].h
+            in_dims[0].transpose_to_order(("h", "w", "c")))
+        w_out = out_dims[0].w
+        h_out = out_dims[0].h
+        c_out = out_dims[0].c
+        w_in = in_dims[0].w
+        h_in = in_dims[0].h
         wstep = ((w_in - 1) << 16) // (w_out - 1)
         hstep = ((h_in - 1) << 16) // (h_out - 1)
         out_tensor = np.zeros((h_out, w_out, c_out), dtype=np.int32)
@@ -94,5 +96,5 @@ class NearestNeighbourResizerSymmetric(KernelBase):
                 out_tensor[i, j, :] = in_tensor[h_rounded, w_rounded, :]
 
         out_tensor = out_tensor.transpose(
-            params.out_dims[0].transpose_from_order(("h", "w", "c")))
+            out_dims[0].transpose_from_order(("h", "w", "c")))
         return qrec.get_outputs(params, [out_tensor], ktype="symmetric")

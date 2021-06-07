@@ -238,6 +238,11 @@ class Dim():
             object.__setattr__(res, '_names', [self._names[i] for i in order])
         return res
 
+    def calc_reversed_transpose(self, order):
+        '''transpose dimension in the reverse of order which is a list of indexes'''
+        reversed_order = [order.index(idx) for idx in range(len(order))]
+        return self.calc_transpose(reversed_order)
+
     def move_last_to_first(self):
         self._verify_is_ordered()
         self._shape.insert(0, self._shape.pop())

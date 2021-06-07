@@ -16,12 +16,12 @@
 
 import os
 from copy import deepcopy
-from reports.draw_graph_reporter import DrawGraphReporter
 
 from graph.constant_store import ConstantStore
 from graph.dim import Dim
-from graph.matches.duplicate_constants import MatchDuplicateConstants
-from graph.matches.remove_quantize_operators import RemoveQuantizeOperators
+from graph.matches.matchers.duplicate_constants import MatchDuplicateConstants
+from graph.matches.matchers.remove_quantize_operators import \
+    RemoveQuantizeOperators
 from graph.nngraph import NNGraph
 from graph.types import (ConcatParameters, ConstantInputParameters, NNEdge,
                          SigmoidActivationParameters, SoftMaxParameters,
@@ -55,6 +55,30 @@ class TFLiteImporter(ImporterBase):
     @property
     def provisional_outputs(self):
         return self._provisional_outputs
+
+    @staticmethod
+    def find_nodes_with_bad_quantization(G):
+        if G.quantization is None:
+            raise ValueError('can only be called on a quantized graph')
+        qrecs = G.quantization
+        res = set()
+        for edge in G.edges():
+            nodes = [edge.from_node, edge.to_node]
+            eqrecs = tuple(qrecs.get(NodeId(node)) for node in nodes)
+            # any node with a missing qrec is added to the list
+            missing_qrecs = False
+            for node, qrec in zip(nodes, eqrecs):
+                if qrec is None:
+                    res.add(node)
+                    missing_qrecs = True
+            if missing_qrecs:
+                continue
+            # check if the edge input and output have the same quantization
+            from_qrec, to_qrec = eqrecs
+            if from_qrec.out_qs[edge.from_idx] != to_qrec.in_qs[edge.to_idx]:
+                res |= set(nodes)
+        return res
+
 
     def create_graph(self, filename, opts):
         opts = self.get_opts(opts)
@@ -95,16 +119,19 @@ class TFLiteImporter(ImporterBase):
                     to_remove.append(nid)
             for nid in to_remove:
                 del G.quantization[nid]
+            nodes_with_bad_quantization = self.find_nodes_with_bad_quantization(G)
             quantizer = UnifiedQuantizer.from_quantized_graph(G)
             # check for quantization problems
             # 1) need to force softmax/Sigmoid input to POW2 quantization
             # 2) need to check that all concats and splits have same input and
             #    output quantization
-            G.quantization = quantizer.quantize(G, start_nodes=G.nodes(node_classes=(
+            # 3) Need to check that all nodes have qrecs and that they are consistent
+            nodes_with_bad_quantization |= set(G.nodes(node_classes=(
                 ConcatParameters,
                 SoftMaxParameters,
                 SplitParameters,
                 SigmoidActivationParameters)))
+            G.quantization = quantizer.quantize(G, start_nodes=nodes_with_bad_quantization)
             G.add_dimensions()
 
         return G

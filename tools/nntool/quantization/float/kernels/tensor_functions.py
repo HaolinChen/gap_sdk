@@ -62,8 +62,6 @@ class OutputFloat32(KernelBase):
                 qrec: QRec,
                 **kwargs):
         in_tensor = in_tensors[0]
-        if params.transpose_in:
-            in_tensor = np.transpose(in_tensor, params.transpose_in[0])
         return [in_tensor]
 
 
@@ -118,12 +116,7 @@ class ConcatFloat32(KernelBase):
 
         qname = kwargs['qname']
         in_tensors = qrec.prepare_inputs(params, in_tensors, ktype=qname)
-        if params.transpose_in:
-            in_tensors = [(np.transpose(in_tensor, params.transpose_in[idx]) if params.transpose_in[idx] else in_tensor)
-                          for idx, in_tensor in enumerate(in_tensors)]
         out_tensor = np.concatenate(in_tensors, params.axis)
-        if params.transpose_out:
-            out_tensor = np.transpose(out_tensor, params.transpose_out[0])
         return qrec.get_outputs(params, [out_tensor], ktype=qname)
 
 
@@ -138,11 +131,7 @@ class ReshapeFloat32(KernelBase):
 
         qname = kwargs['qname']
         in_tensor = qrec.prepare_inputs(params, in_tensors, ktype=qname)[0]
-        if params.transpose_in:
-            in_tensor = np.transpose(in_tensor, params.transpose_in[0])
         in_tensor = np.reshape(in_tensor, params.shape)
-        if params.transpose_out:
-            in_tensor = np.transpose(in_tensor, params.transpose_out[0])
         return qrec.get_outputs(params, [in_tensor], ktype=qname)
 
 
@@ -157,8 +146,6 @@ class TransposeFloat32(KernelBase):
 
         qname = kwargs['qname']
         in_tensor = qrec.prepare_inputs(params, in_tensors, ktype=qname)[0]
-        if params.transpose_in:
-            in_tensor = np.transpose(in_tensor, params.transpose_in[0])
         return qrec.get_outputs(params, [in_tensor], ktype=qname)
 
 
@@ -190,13 +177,7 @@ class SplitFloat32(KernelBase):
         qname = kwargs['qname']
         params = typing_cast(SplitParameters, params)
         in_tensor = qrec.prepare_inputs(params, in_tensors, ktype=qname)[0]
-        if params.transpose_in:
-            in_tensor = np.transpose(in_tensor, params.transpose_in[0])
         out_tensors = params.numpy_split(in_tensor)
-        if params.transpose_out:
-            out_tensors = [(np.transpose(out_tensor, params.transpose_in[idx])
-                            if params.transpose_in[idx] else out_tensor)
-                           for idx, out_tensor in enumerate(out_tensors)]
         return qrec.get_outputs(params, out_tensors, ktype=qname)
 
 @params_type(GatherParameters)

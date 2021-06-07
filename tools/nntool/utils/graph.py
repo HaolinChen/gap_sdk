@@ -89,6 +89,14 @@ class Edge():
 
     def __init__(self, from_node: Union[str, Node], to_node: Union[str, Node],
                  from_idx: int = 0, to_idx: int = 0):
+        if not isinstance(from_node, (Node, str)):
+            raise ValueError('expecting node or string for from_node')
+        if not isinstance(to_node, (Node, str)):
+            raise ValueError('expecting node or string for to_node')
+        if not isinstance(from_idx, int):
+            raise ValueError('expecting int for from_idx')
+        if not isinstance(to_idx, int):
+            raise ValueError('expecting int for to_idx')
         self._link = [from_node, from_idx, to_node, to_idx]
 
     @property
@@ -99,6 +107,8 @@ class Edge():
     @from_node.setter
     def from_node(self, val):
         '''Edge start node'''
+        if not isinstance(val, (Node, str)):
+            raise ValueError('expecting node or string for from_node')
         self._link[0] = val
 
     @property
@@ -109,6 +119,8 @@ class Edge():
     @to_node.setter
     def to_node(self, val):
         '''Edge end node'''
+        if not isinstance(val, (Node, str)):
+            raise ValueError('expecting node or string for to_node')
         self._link[2] = val
 
     @property
@@ -129,6 +141,8 @@ class Edge():
     @from_idx.setter
     def from_idx(self, val):
         '''Edge start output index'''
+        if not isinstance(val, int):
+            raise ValueError('expecting int for from_idx')
         self._link[1] = val
 
     @property
@@ -139,6 +153,8 @@ class Edge():
     @to_idx.setter
     def to_idx(self, val):
         '''Edge end input index'''
+        if not isinstance(val, int):
+            raise ValueError('expecting int for from_idx')
         self._link[3] = val
 
     def clone(self):
@@ -392,6 +408,10 @@ class GraphView(Mapping):
             if edge.to_idx >= len(indexed_edges):
                 indexed_edges += [None] * \
                     (edge.to_idx + 1 - len(indexed_edges))
+            if indexed_edges[edge.to_idx]:
+                cur_edge = indexed_edges[edge.to_idx]
+                raise ValueError(f'{edge.to_node.name} already has an edge '
+                                 f'on {edge.to_idx} from {cur_edge.from_node}:{cur_edge.from_idx}')
             assert not indexed_edges[edge.to_idx], "only one connection is allowed"
             indexed_edges[edge.to_idx] = edge
         return indexed_edges
@@ -458,17 +478,6 @@ class GraphView(Mapping):
             = list(filter(edge_match, edge_list))
         if not self._out_edges[edge.from_node.name][edge.to_node.name]:
             del self._out_edges[edge.from_node.name][edge.to_node.name]
-        
-
-    def unique_name(self, proposed_name):
-        if proposed_name not in self:
-            return proposed_name
-        idx = 1
-        alt_name = f'{proposed_name}_{idx}'
-        while alt_name in self:
-            idx += 1
-            alt_name = f'{proposed_name}_{idx}'
-        return alt_name
 
     def insert_node_at_edge(self, node, at_edge, edge_class=Edge):
         self.remove_edge(at_edge)
@@ -536,7 +545,7 @@ class GraphView(Mapping):
             edge._link[2] = new_node
             self.add_edge(edge)
 
-    def get_unique_name(self, prefix):
+    def unique_name(self, prefix):
         if prefix not in self:
             return prefix
         idx = 0

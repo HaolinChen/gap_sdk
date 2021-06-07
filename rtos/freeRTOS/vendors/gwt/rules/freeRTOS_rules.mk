@@ -22,8 +22,11 @@ else ifeq ($(TARGET_CHIP), GAP8_V2)
 TARGET_CHIP_VERSION=2
 else ifeq ($(TARGET_CHIP), GAP8_V3)
 TARGET_CHIP_VERSION=3
-else
+else ifeq ($(TARGET_CHIP), GAP9)
 TARGET_CHIP_VERSION=1
+chip="VEGA"
+else
+TARGET_CHIP_VERSION=2
 endif
 chip_lowercase = $(shell echo $(chip) | tr A-Z a-z)
 
@@ -48,12 +51,17 @@ GWT_PMSIS_API       = $(GAP_SDK_HOME)/rtos/pmsis/pmsis_api
 endif				# GAP_SDK_HOME
 
 ifeq ($(chip), GAP8)
-APP_ARCH_CFLAGS     ?= -mchip=gap8 -mPE=8 -mFC=1
-APP_ARCH_LDFLAGS    ?=
+#APP_ARCH_CFLAGS     ?= -mchip=gap8 -mPE=8 -mFC=1
+APP_ARCH_CFLAGS     ?= -march=rv32imcxgap8 -mPE=8 -mFC=1
+APP_ARCH_LDFLAGS    ?= -march=rv32imcxgap8 -mPE=8 -mFC=1
+else ifeq ($(TARGET_CHIP_VERSION), 2)
+#APP_ARCH_CFLAGS     ?= -mchip=gap9 -mPE=8 -mFC=1
+APP_ARCH_CFLAGS     ?= -march=rv32imcxgap9 -mPE=8 -mFC=1 -mint64
+APP_ARCH_LDFLAGS    ?= -march=rv32imcxgap9 -mPE=8 -mFC=1 -mint64
 else
 #APP_ARCH_CFLAGS     ?= -mchip=gap9 -mPE=8 -mFC=1
-APP_ARCH_CFLAGS     ?= -march=rv32imcxgap9 -mint64 -mPE=8 -mFC=1
-APP_ARCH_LDFLAGS    ?= -march=rv32imcxgap9 -mint64 -mPE=8 -mFC=1
+APP_ARCH_CFLAGS     ?= -march=rv32imcxgap9 -mPE=8 -mFC=1
+APP_ARCH_LDFLAGS    ?= -march=rv32imcxgap9 -mPE=8 -mFC=1
 endif				# chip
 
 RISCV_FLAGS         ?= $(APP_ARCH_CFLAGS)
@@ -166,23 +174,25 @@ FREERTOS_FLAGS     += -D__FREERTOS__
 # App task stack size.
 FREERTOS_FLAGS     += -DMAIN_APP_STACK_SIZE=$(MAIN_APP_STACK_SIZE)
 
-COMMON              = -c -g -fmessage-length=0 -fno-exceptions \
-                      -ffunction-sections -fdata-sections -funsigned-char \
-                      -fno-delete-null-pointer-checks -fomit-frame-pointer \
-                      $(DEVICE_FLAGS) $(FEATURE_FLAGS) $(RISCV_FLAGS) $(FREERTOS_FLAGS)
-
 GCC_OPTIM_LEVEL     = -Os	# Optimize for size.
+
+COMMON              = $(RISCV_FLAGS) \
+                      -c -g -ffunction-sections -fdata-sections \
+                      -fno-delete-null-pointer-checks -fomit-frame-pointer \
+                      -fno-tree-loop-distribute-patterns -fno-jump-tables \
+                      $(FEATURE_FLAGS) $(FREERTOS_FLAGS) $(GCC_OPTIM_LEVEL)
 
 # Enable log/traces. Often another flag should be set in order to print traces.
 DEBUG_FLAGS         ?= -DPI_LOG_DEFAULT_LEVEL=PI_LOG_TRACE
 
-PRINTF_FLAGS        = -DPRINTF_ENABLE_LOCK #-DPRINTF_DISABLE_SUPPORT_EXPONENTIAL #\
-                      -DPRINTF_DISABLE_SUPPORT_FLOAT
+PRINTF_FLAGS        = -DPRINTF_ENABLE_LOCK
+#-DPRINTF_DISABLE_SUPPORT_EXPONENTIAL -DPRINTF_DISABLE_SUPPORT_FLOAT
 PRINTF_FLAGS       += $(IO)
 
 WARNINGS            = -Wall -Wextra -Wno-unused-parameter -Wno-unused-function \
                       -Wno-unused-variable -Wno-unused-but-set-variable \
-                      -Wno-missing-field-initializers -Wno-format -Wimplicit-fallthrough=0
+                      -Wno-missing-field-initializers -Wno-format -Wimplicit-fallthrough=0 \
+                      -Wno-discarded-qualifiers
 
 ASMFLAGS            = -x assembler-with-cpp $(COMMON) $(WARNINGS) -DASSEMBLY_LANGUAGE
 
@@ -201,7 +211,8 @@ SIZE_OPT            = -B -x --common
 # The linker options.
 # The options used in linking as well as in any direct use of ld.
 LIBS                = -lgcc
-STRIP               = -Wl,--gc-sections,-Map=$@.map,-static #,-s
+STRIP               = -Wl,--gc-sections,-Map=$@.map,-static
+#,-s
 ifeq ($(LINK_SCRIPT),)
 ifeq '$(CONFIG_XIP)' '1'
 LINK_SCRIPT         = $(GWT_DEVICE)/ld/$(chip)_xip.ld
@@ -209,10 +220,19 @@ else
 LINK_SCRIPT         = $(GWT_DEVICE)/ld/$(chip).ld
 endif
 endif				# LINK_SCRIPT
-LDFLAGS             = -nostartfiles -nostdlib -T$(LINK_SCRIPT) $(STRIP) $(APP_LDFLAGS) $(LIBS)
+LDFLAGS             = -T$(LINK_SCRIPT) -nostartfiles -nostdlib $(STRIP) $(LIBS)
+
+# App sources
+APP_SRC            +=
+# App includes
+APP_INCLUDES       += $(foreach f, $(APP_INC_PATH), -I$f)
+# App compiler options
+APP_CFLAGS         +=
+# App linker options
+APP_LDFLAGS        +=
 
 # libc/gcc CRT files.
-GCC_CRT             = $(GAP_RISCV_GCC_TOOLCHAIN)/lib/gcc/riscv32-unknown-elf/7.1.1/crtbegin.o \
+#GCC_CRT             = $(GAP_RISCV_GCC_TOOLCHAIN)/lib/gcc/riscv32-unknown-elf/7.1.1/crtbegin.o \
                       $(GAP_RISCV_GCC_TOOLCHAIN)/lib/gcc/riscv32-unknown-elf/7.1.1/crti.o \
                       $(GAP_RISCV_GCC_TOOLCHAIN)/lib/gcc/riscv32-unknown-elf/7.1.1/crtn.o \
                       $(GAP_RISCV_GCC_TOOLCHAIN)/lib/gcc/riscv32-unknown-elf/7.1.1/crtend.o
@@ -260,13 +280,6 @@ PMSIS_INC_PATH     += $(PMSIS_BSP_INC)
 PMSIS_INC_PATH     += $(PMSIS_RTOS_INC)
 
 
-# GAP_LIB sources
-ifeq '$(CONFIG_GAP_LIB)' '1'
-GAP_LIB_PATH        = $(GAP_SDK_HOME)/libs/gap_lib
-GAP_LIB_SRC        += $(GAP_LIB_PATH)/img_io/ImgIO.c
-GAP_LIB_INC_PATH   += $(GAP_LIB_PATH)/include $(GAP_LIB_PATH)/include/gaplib
-endif				# GAP_LIB
-
 
 ifdef CONFIG_TESTBENCH
 
@@ -299,15 +312,6 @@ endif				# OpenMP
 INCLUDES            = $(foreach f, $(INC_PATH) $(PMSIS_INC_PATH), -I$f)
 INCLUDES           += $(foreach f, $(GAP_LIB_INC_PATH) $(OPENMP_INC_PATH), -I$f)
 INCLUDES           += $(FEAT_INCLUDES)
-
-# App sources
-APP_SRC            +=
-# App includes
-APP_INCLUDES       += $(foreach f, $(APP_INC_PATH), -I$f)
-# App compiler options
-APP_CFLAGS         +=
-# App linker options
-APP_LDFLAGS        +=
 
 # Directory containing built objects
 BUILDDIR            = $(shell pwd)/BUILD$(build_dir_ext)/$(TARGET_CHIP)/GCC_RISCV
@@ -366,20 +370,20 @@ $(BUILDDIR):
 $(ASM_OBJS): $(BUILDDIR)/%.o: %.S
 	@echo "    ASM  $(shell basename $<)"
 	@mkdir -p $(dir $@)
-	$(TRC_MAKE)$(CC) $(ASMFLAGS) $(INCLUDES) -MD -MF $(basename $@).d -o $@ $<
+	$(TRC_MAKE)$(CC) $(ASMFLAGS) $(APP_CFLAGS) $(INCLUDES) -MD -MF $(basename $@).d -o $@ $<
 
 $(C_OBJS): $(BUILDDIR)/%.o: %.c
 	@echo "    CC  $(shell basename $<)"
 	@mkdir -p $(dir $@)
-	$(TRC_MAKE)$(CC) $(CFLAGS) $(APP_CFLAGS) $(GCC_OPTIM_LEVEL) $(INCLUDES) -MD -MF $(basename $@).d -o $@ $<
+	$(TRC_MAKE)$(CC) $(CFLAGS) $(APP_CFLAGS) $(INCLUDES) -MD -MF $(basename $@).d -o $@ $<
 
 $(APP_OBJ): $(BUILDDIR)/%.o: %.c
 	@echo "    CC $(shell basename $<)"
 	@mkdir -p $(dir $@)
-	$(TRC_MAKE)$(CC) $(CFLAGS) $(GCC_OPTIM_LEVEL) $(APP_CFLAGS) $(INCLUDES) $(APP_INCLUDES) -MD -MF $(basename $@).d -o $@ $<
+	$(TRC_MAKE)$(CC) $(CFLAGS) $(APP_CFLAGS) $(INCLUDES) $(APP_INCLUDES) -MD -MF $(basename $@).d -o $@ $<
 
 $(BIN): $(OBJS)
-	$(TRC_MAKE)$(CC) $(APP_ARCH_LDFLAGS) -MMD -MP -o $@ $(GCC_CRT) $(OBJS) $(LDFLAGS)
+	$(TRC_MAKE)$(CC) -MD -MP -o $@ $(GCC_CRT) $(OBJS) $(APP_ARCH_LDFLAGS) $(APP_LDFLAGS) $(LDFLAGS)
 
 $(OBJS_DUMP): $(BUILDDIR)/%.dump: $(BUILDDIR)/%.o
 	@$(OBJDUMP) $(OBJDUMP_OPT) $< > $@
@@ -414,7 +418,7 @@ run: $(BIN)
 traces:
 	gapy --target=$(GAPY_TARGET) --platform=$(platform) --work-dir=$(BUILDDIR) $(config_args) $(gapy_args) run --exec --binary=$(BIN) --no-run --extend-traces $(runner_args)
 
-disdump: $(OBJS_DUMP) $(BIN).s $(BIN).size
+disdump: $(BIN).s $(BIN).size #$(OBJS_DUMP)
 
 debug:
 	$(RTL_SIMU_DEBUG)

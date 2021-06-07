@@ -20,13 +20,13 @@ from cmd2 import Cmd2ArgumentParser, with_argparser
 from interpreter.nntool_shell_base import (NNToolShellBase,
                                            store_once_in_history)
 from interpreter.shell_utils import glob_input_files, input_options
-from quantization.handlers_helpers import add_options_to_parser, get_options_from_args
+from quantization.handlers_helpers import (add_options_to_parser,
+                                           get_options_from_args)
 from quantization.unified_quantizer import UnifiedQuantizer
 from utils.data_importer import import_data
 from utils.stats_funcs import STATS_BITS
 
-from graph.matches.remove_unnecessary_quantize_operators import \
-    RemoveUnnecessaryQuantizeOperators
+from graph.matches.matchers.remove_unnecessary_quantize_operators import RemoveUnnecessaryQuantizeOperators
 from stats.activation_ranges_collector import ActivationRangesCollector
 
 LOG = logging.getLogger('nntool.'+__name__)

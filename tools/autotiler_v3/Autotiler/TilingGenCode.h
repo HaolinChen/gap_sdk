@@ -21,5 +21,7 @@ uint64_t SetSpaceSizeOrig(Kernel_T *Ker, Kernel_Arg_T *Arg, uint64_t *ArgSpaceSi
 extern void LogicalTileNAddressAndSizeOrig(Kernel_T *Ker, Kernel_Arg_T *Arg, uint64_t *ArgSpaceSize, int N, uint64_t *Address, uint64_t *Size, uint64_t *Length, uint64_t *Stride);
 extern char *BindOpImage(ArgBindingOper Op);
 
+extern char *KernelArgImage(Kernel_T *Ker, Kernel_Arg_T *Arg, CKernel_Arg_T *ArgVal, KernelArgSelect_T ArgSel, KernelIteratorT ArgSpace, KernelIteratorT ItSpace, int *IsInvar);
+
 
 #endif

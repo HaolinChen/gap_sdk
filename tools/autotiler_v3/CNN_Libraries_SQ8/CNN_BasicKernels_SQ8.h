@@ -418,6 +418,37 @@ typedef struct {
 
 
 /******************************************************************************************************************
+	Standalone scaling and activation for HWC layer layout
+******************************************************************************************************************/
+typedef struct {
+	void *__restrict__ In;
+	void *__restrict__ Out;
+	unsigned short int Feat;
+	unsigned short int W;
+	unsigned short int H;
+	signed char * __restrict__ Infos;
+} KerActivation_HWC_SQ8_T;
+
+/******************************************************************************************************************
+	Pooling followed by optional scaling and activation
+******************************************************************************************************************/
+typedef struct {
+	unsigned char * __restrict__ In;
+	unsigned char * __restrict__ Out;
+	unsigned short int Feat;
+	unsigned short int W;
+	unsigned short int UsedW;
+	unsigned short int H;
+	unsigned short int UsedH;
+	unsigned short FS;		/* Filter Size, x */
+	unsigned short FSy;		/* Filter Size, y */
+	unsigned char S;		/* Filter Stride, x */
+	unsigned char Sy;		/* Filter Stride, y */
+	v4s Pad;
+	signed char * __restrict__ Infos;
+} KerPool_HWC_USQ8_T;
+
+/******************************************************************************************************************
 	Bias setting for convolution and linear layers, output is 32b, input is 8,16 or 32b
 ******************************************************************************************************************/
 
@@ -458,6 +489,8 @@ void KerParConv5x5StrideS_SQ8(KerConv_SQ8_T *Arg);
 void KerParConv7x7StrideS_SQ8(KerConv_SQ8_T *Arg);
 void KerParConv13x1Stride1x1_SQ8(KerConv_SQ8_T *Arg);
 void KerParConv4x10StrideSxSy_SQ8(KerConv_SQ8_T *Arg);
+void KerParConv1D_NStrideS_SQ8(KerConv_SQ8_T *Arg);
+void KerParConvNx1StrideSxS1_SQ8(KerConv_SQ8_T *Arg);
 void KerParConvNxNStrideS_SQ8(KerConv_SQ8_T *Arg);
 void KerParConvNxMStrideSxSy_SQ8(KerConv_SQ8_T *Arg);
 void KerParConvNxMDxDyStrideSxSy_SQ8(KerConv_SQ8_T *Arg);
@@ -490,6 +523,8 @@ void KerConv5x5Stride1_SQ8(KerConv_SQ8_T *Arg);
 void KerConv5x5Stride2_SQ8(KerConv_SQ8_T *Arg);
 void KerConv5x5StrideS_SQ8(KerConv_SQ8_T *Arg);
 void KerConv7x7StrideS_SQ8(KerConv_SQ8_T *Arg);
+void KerConv1D_NStrideS_SQ8(KerConv_SQ8_T *Arg);
+void KerConvNx1StrideSxS1_SQ8(KerConv_SQ8_T *Arg);
 void KerConvNxNStrideS_SQ8(KerConv_SQ8_T *Arg);
 void KerConvNxMStrideSxSy_SQ8(KerConv_SQ8_T *Arg);
 void KerConvNxMDxDyStrideSxSy_SQ8(KerConv_SQ8_T *Arg);
@@ -700,6 +735,20 @@ void KerReductIO_CC_HSwish_SQ8(KerConvLinReduct_SQ8_T *Arg);
 void KerReductIO_CC_LeakyReLU_SQ8(KerConvLinReduct_SQ8_T *Arg);
 void KerReductIO_CC_Sigmoid_SQ8(KerConvLinReduct_SQ8_T *Arg);
 
+/* HWC Layout */
+void KerParReduct_CC_HWC_SQ8(KerConvLinReduct_SQ8_T *Arg);
+void KerParReduct_CC_NoScale_HWC_SQ8(KerConvLinReduct_SQ8_T *Arg);
+void KerParReduct_CC_ReLU_HWC_SQ8(KerConvLinReduct_SQ8_T *Arg);
+void KerParReduct_CC_ReLUN_HWC_SQ8(KerConvLinReduct_SQ8_T *Arg);
+void KerParReduct_CC_HSigmoid_HWC_SQ8(KerConvLinReduct_SQ8_T *Arg);
+void KerParReduct_CC_HSwish_HWC_SQ8(KerConvLinReduct_SQ8_T *Arg);
+void KerParReduct_CC_LeakyReLU_HWC_SQ8(KerConvLinReduct_SQ8_T *Arg);
+
+void KerParReduct_CC_NoScale_HWC_USQ8(KerConvLinReduct_SQ8_T *Arg);
+void KerParReduct_CC_HWC_USQ8(KerConvLinReduct_SQ8_T *Arg);
+void KerParReduct_CC_ReLU_HWC_USQ8(KerConvLinReduct_SQ8_T *Arg);
+void KerParReduct_CC_ReLUN_HWC_USQ8(KerConvLinReduct_SQ8_T *Arg);
+
 /******************************************************************************************************************
           Stand alone activation. Parallel Feature, Feature Parallel
 	  Input is a scaled 8b tensor
@@ -791,6 +840,8 @@ void KerParGlobalAvgPoolFullFeat_SQ8(KerGlobalPool_SQ8_T *Arg);
 void KerParGlobalAvgPoolFullFeat_ReLU_SQ8(KerGlobalPool_SQ8_T *Arg);
 void KerParGlobalAvgPoolFullFeat_ReLUN_SQ8(KerGlobalPool_SQ8_T *Arg);
 
+/* Pooling Basic Kernels for HWC Layers layout */
+void KerParPool_MaxPoolNxMStrideSxSy__HWC_USQ8(KerPool_HWC_USQ8_T *Arg);
 
 /*************************************************************************************************************************************************
 	Pooling group.
@@ -848,6 +899,9 @@ void KerParMatMulB32_2x4_SQ8(KerMatMul_SQ8_T *Arg);
 void KerParMatMulB32_ReLU_SQ8(KerMatMul_SQ8_T *Arg);
 void KerParMatMulB32_2x4_ReLU_SQ8(KerMatMul_SQ8_T *Arg);
 void KerParMatMulB32_ReLUN_SQ8(KerMatMul_SQ8_T *Arg);
+void KerParMatMulTransposedB32_SQ8(KerMatMul_SQ8_T *Arg);
+void KerParMatMulTransposedB32_ReLU_SQ8(KerMatMul_SQ8_T *Arg);
+void KerParMatMulTransposedB32_ReLUN_SQ8(KerMatMul_SQ8_T *Arg);
 void KerParMatMulB32_2x4_PL_SQ8(KerMatMul_PL_SQ8_T *Arg);
 void KerParMatMulB32_2x4_ReLU_PL_SQ8(KerMatMul_PL_SQ8_T *Arg);
 void KerParMatMulB32_2x4_ReLUN_PL_SQ8(KerMatMul_PL_SQ8_T *Arg);

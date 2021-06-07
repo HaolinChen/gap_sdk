@@ -23,7 +23,7 @@ from quantization.handlers_helpers import (add_options_to_parser,
                                            get_options_from_args)
 from quantization.unified_quantizer import UnifiedQuantizer
 
-from graph.matches.remove_unnecessary_quantize_operators import \
+from graph.matches.matchers.remove_unnecessary_quantize_operators import \
     RemoveUnnecessaryQuantizeOperators
 from stats.activation_ranges_collector import ActivationRangesCollector
 

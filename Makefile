@@ -1,4 +1,4 @@
-# Copyright (c) 2017 GreenWaves Technologies SAS
+# Copyright (c) 2021 GreenWaves Technologies SAS
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -86,13 +86,16 @@ clean: littlefs.clean sfu.clean
 	$(RM) $(TARGET_INSTALL_DIR)
 	$(RM) $(BUILD_DIR)
 endif
-minimal_sdk: freertos pmsis-bsp.checkout pmsis-api.checkout gapy.all examples.checkout openocd_tools.build
+
+mini_checkout: pmsis-bsp.checkout pmsis-api.checkout examples.checkout 
+minimal_sdk: freertos gapy.all openocd_tools.build
 freertos: freertos.all openmp.all gap_lib.all
 
 # Rules for installing docs
 #------------------------------------------
 docs:
 	$(MAKE) -C $(GAP_SDK_HOME)/docs all
+	$(MAKE) -C $(GAP_SDK_HOME)/doc html
 
 # Rules for installing tools
 #------------------------------------------

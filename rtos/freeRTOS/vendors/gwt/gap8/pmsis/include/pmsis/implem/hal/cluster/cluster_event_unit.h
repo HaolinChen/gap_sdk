@@ -51,14 +51,13 @@
  * \return               The loaded value, after the core has been waken-up.
  *                       This value depends on the feature which is accessed.
  */
-static inline uint32_t hal_eu_read32(uint32_t base, uint32_t offset)
-{
-    uint32_t value = 0;
-    hal_compiler_barrier();
-    value = __builtin_pulp_event_unit_read((void *) base, offset);
-    hal_compiler_barrier();
-    return value;
-}
+//static inline uint32_t hal_eu_read32(uint32_t base, uint32_t offset)
+#define hal_eu_read32(base, offset)                                     \
+    ({                                                                  \
+        uint32_t value = 0;                                             \
+        value = __builtin_pulp_event_unit_read_fenced((void *) base, offset); \
+        value;                                                          \
+    })
 
 
 /**

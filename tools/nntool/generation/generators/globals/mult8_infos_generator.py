@@ -12,21 +12,21 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-import os
-
 import numpy as np
 from generation.at_types.constant_info import ConstantInfo
 from generation.at_types.tc_arg_info import GlobalArgInfo
 from generation.generator_decorators import QREC_MULT8, generation_function
+from generation.helpers.gen_constant import gen_constant
+from generation.helpers.gen_scales import gen_scales
 from graph.types import (ActivationFusion, ActivationParameters,
                          ConvFusionParameters, FilterParameters,
                          GlobalPoolParameters, HSigmoidActivationParameters,
                          HSwishActivationParameters, LeakyActivationParameters,
+                         MatMulOpFusionParameters, MatMulOpParameters,
                          MatrixAddParameters, MatrixMulParameters,
                          PaddedAddFusionParameters, PoolingParameters,
-                         ReluActivationParameters, SigmoidActivationParameters,
-                         SoftMaxParameters)
-from graph.types.others import QuantizeParameters
+                         QuantizeParameters, ReluActivationParameters,
+                         SigmoidActivationParameters, SoftMaxParameters)
 from quantization.multiplicative.mulbias import (compute_in_out_scale,
                                                  set_add_in_scale)
 from quantization.qtype import QType
@@ -43,7 +43,7 @@ from .global_names import *
                      (FilterParameters, ConvFusionParameters, ActivationParameters,
                       GlobalPoolParameters, MatrixAddParameters, MatrixMulParameters,
                       ActivationFusion, PoolingParameters, SoftMaxParameters, PaddedAddFusionParameters,
-                      QuantizeParameters),
+                      QuantizeParameters, MatMulOpFusionParameters, MatMulOpParameters),
                      qrec_types=(QREC_MULT8,))
 def mult8_infos_generator(gen, node, qrec, pnode, fnode) -> bool:
     if fnode is not None:
@@ -65,8 +65,11 @@ def mult8_infos_generator(gen, node, qrec, pnode, fnode) -> bool:
         in_zero_point = quants[0].in_qs[0].zero_point
         for qrec in quants:
             compute_in_out_scale(qrec)
-        if node.fusion_type.startswith('linear') or node.fusion_type.startswith('conv'):
-            if node.fusion_type in ("conv_active_pool", "conv_active", "linear_active"):
+        if node.fusion_type.startswith('linear') or node.fusion_type.startswith('conv') or node.fusion_type.startswith('pool'):
+            if node.fusion_type in ("pool_active"):
+                act_infos(gen, pnode, cnodes[0], cnodes[1], quants[1],
+                          extra1=0, for_ne16=for_ne16, in_zero_point=in_zero_point)
+            elif node.fusion_type in ("conv_active_pool", "conv_active", "linear_active"):
                 act_infos(gen, pnode, cnodes[0], cnodes[1], quants[1],
                           extra1=0, for_ne16=for_ne16, in_zero_point=in_zero_point)
             elif node.fusion_type == "conv_pool_active":
@@ -121,14 +124,35 @@ def mult8_infos_generator(gen, node, qrec, pnode, fnode) -> bool:
                       extra2=quants[0].cache['scale_in_mul_biases_q'].qnorms[0],
                       extra3=quants[0].cache['scale_mul_biases_q'].qbiases[0],
                       extra4=quants[0].cache['scale_mul_biases_q'].qnorms[0])
-        elif isinstance(cnodes[0], MatrixMulParameters):
-            compute_in_out_scale(quants[0], in_idx=(0, 1), out_idx=0)
-            act_infos(gen, pnode, cnodes[0], cnodes[1], quants[1],
-                      extra1=qrec.cache['scale_mul_biases_q'].qbiases[0],
-                      extra2=qrec.cache['scale_mul_biases_q'].qnorms[0])
         else:
             return False
         return True
+    elif isinstance(pnode, (MatMulOpParameters, MatMulOpFusionParameters)):
+        if isinstance(pnode, MatMulOpFusionParameters):
+            cnodes = node.contained_nodes()
+            quants = [gen.G.quantization[NodeId(
+                node, fnode)] for fnode in cnodes]
+            mul_node = cnodes[0]
+            mul_qrec = quants[0]
+            act_node = cnodes[1]
+            act_qrec = quants[1]
+        else:
+            mul_node = pnode
+            mul_qrec = qrec
+            act_node = None
+            act_qrec = None
+
+        if len(pnode.in_dims) == 3 and len(mul_qrec.in_qs[0].scale) > 1:
+            gen_scales(gen, pnode, mul_node, mul_qrec)
+            extra3 = 0
+            extra4 = 0
+        else:
+            extra3 = mul_qrec.cache['mul_biases_q'].qbiases[0]
+            extra4 = mul_qrec.cache['mul_biases_q'].qnorms[0]
+
+        act_infos(gen, pnode, mul_node, act_node, act_qrec,
+                  extra3=extra3,
+                  extra4=extra4)
     elif isinstance(pnode, QuantizeParameters):
         in_q = qrec.in_qs[0]
         out_q = qrec.out_qs[0]
@@ -136,9 +160,9 @@ def mult8_infos_generator(gen, node, qrec, pnode, fnode) -> bool:
             raise ValueError(f"don't know how to change scale in {pnode.name}")
         comment = f'in zp: {in_q.zero_point} out_zp: {out_q.zero_point}'
         if in_q.dtype == np.int8 and out_q.dtype == np.uint8:
-            contents = ((256 + in_q.zero_point[0]) % 256).astype(np.uint8)
+            contents = ((256 + in_q.zero_point[0] - out_q.zero_point[0]) % 256).astype(np.uint8)
         elif in_q.dtype == np.uint8 and out_q.dtype == np.int8:
-            contents = (256 - in_q.zero_point[0]).astype(np.uint8)
+            contents = (256 - in_q.zero_point[0] + out_q.zero_point[0]).astype(np.uint8)
         else:
             raise ValueError(f"strange dtype change in {pnode.name}")
         cname, file_name = gen_constant(gen, pnode, pnode, INFOS)
@@ -153,16 +177,6 @@ def mult8_infos_generator(gen, node, qrec, pnode, fnode) -> bool:
     else:
         return False
     return True
-
-
-def gen_constant(gen, pnode, cache_node, const_type, extra_name=''):
-    cname = gen.naming_convension.get_global_name(pnode.name, pnode.step_idx,
-                                                  pnode, const_type)
-    cname = cname + extra_name
-    gen.name_cache.set(cache_node, const_type, cname)
-    file_name = os.path.join(gen.opts['tensor_directory'],
-                             cname+".tensor")
-    return cname, file_name
 
 
 def act_infos(gen, pnode, fnode, act_params, act_q, extra1=0, extra2=0, extra3=0, extra4=0, extra_name='', for_ne16=False, in_zero_point=0):
@@ -252,7 +266,7 @@ def act_infos(gen, pnode, fnode, act_params, act_q, extra1=0, extra2=0, extra3=0
                               int(norm[0]))
     elif isinstance(act_params, LeakyActivationParameters):
         assert act_q.in_qs[0].zero_point == 0 and act_q.out_qs[0].zero_point == 0, "asymmetric not supported"
-        set_add_in_scale(act_q)
+        compute_in_out_scale(act_q)
         leak_factor_quant = leak_mult_gen_factor_q7(act_params)
         contents = np.array([act_q.cache['scale_mul_biases_q'].qbiases[0],
                              act_q.cache['scale_mul_biases_q'].qnorms[0],

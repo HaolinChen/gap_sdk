@@ -29,7 +29,7 @@ from quantization.unified_quantization_handler import (in_qs_constraint,
 @params_type(Conv2DParameters, FcParameters)
 @in_qs_constraint({'dtype': set([np.float32, np.float16, bfloat16])})
 @out_qs_constraint({'dtype': set([np.float32, np.float16, bfloat16])})
-class FloatDefault(FloatQuantizionHandler):
+class FilterFloat(FloatQuantizionHandler):
     @classmethod
     def _quantize(cls, params, in_qs, stats, **kwargs):
         force_out_qs, dtype = cls.get_float_opts(**kwargs)

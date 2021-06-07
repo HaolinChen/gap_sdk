@@ -57,8 +57,7 @@ class PoolingParameters(FilterLikeParameters, Transposable):
     def get_output_size(self, in_dims):
 
         assert len(in_dims) == 1
-        self.in_dims = self.clone_dim_with_hints(in_dims)
-        in_dims = self.in_dims[0]
+        in_dims = in_dims[0]
 
         if self.transpose_in and self.transpose_in[0]:
             in_dims = in_dims.calc_transpose(self.transpose_in[0])

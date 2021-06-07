@@ -81,6 +81,11 @@ static void pi_24xx1025_close(struct pi_device *device)
 {
     eeprom_t *eeprom = device->data;
 
+    while(eeprom->waiting_page_flush)
+    {
+        pi_time_wait_us(1);
+    }
+
     pi_i2c_close(&eeprom->i2c_device);
 
     pi_l2_free(eeprom, sizeof(eeprom_t));

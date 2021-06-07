@@ -95,7 +95,6 @@ class TransposeParameters(Transposable, SingleInputAndOutput, InsensitiveToQuant
         self._transpose_in = val
 
     def get_output_size(self, in_dims):
-        self.in_dims = self.clone_dim_with_hints(in_dims)
         out_dim = in_dims[0].clone()
         if self.transpose_in:
             out_dim = out_dim.transpose(self.transpose_in[0])
@@ -207,7 +206,6 @@ class ConcatParameters(Transposable):
         return False
 
     def get_output_size(self, in_dims):
-        self.in_dims = self.clone_dim_with_hints(in_dims)
         if self.transpose_in:
             in_dims = [(in_dim.clone() if self.transpose_in[idx] is None
                         else in_dim.clone().transpose(self.transpose_in[idx]))
@@ -334,8 +332,7 @@ class GatherParameters(Parameters, SingleInputAndOutput, SensitiveToOrder, Insen
         return 0
 
     def get_output_size(self, in_dims):
-        in_dim = in_dims[0].clone()
-        self.in_dims = [in_dim]
+        in_dim = in_dims[0]
         new_shape = in_dim.shape[:self.axis:] + \
             list(self.indices.shape) + in_dim.shape[self.axis + 1:]
         return [Dim.unnamed(new_shape)]
@@ -450,9 +447,7 @@ class PadParameters(Parameters, SingleInputAndOutput):
 
     def get_output_size(self, in_dims):
         assert len(in_dims) == 1
-        self.in_dims = self.clone_dim_with_hints(in_dims)
-
-        out_dim = self.in_dims[0].clone()
+        out_dim = in_dims[0].clone()
         for idx, vals in enumerate(self.padding):
             out_dim[idx] += sum(vals)
         return [out_dim]
@@ -619,6 +614,10 @@ class GlobalPoolParameters(Transposable, SingleInputAndOutput):
     def pool_type(self):
         return self._pool_type
 
+    @keep_dims.setter
+    def keep_dims(self, val):
+        self._keep_dims = val
+
     @axis.setter
     def axis(self, val):
         self._axis = val
@@ -660,7 +659,7 @@ class GlobalPoolParameters(Transposable, SingleInputAndOutput):
 
 
 @cls_op_name('reshape')
-class ReshapeParameters(Transposable, SingleInputAndOutput, InsensitiveToQuantization):
+class ReshapeParameters(Transposable, SingleInputAndOutput, InsensitiveToQuantization, ComparableParameters):
 
     def __init__(self, *args, old_shape=None, shape=None, **kwargs):
         super(ReshapeParameters, self).__init__(
@@ -684,9 +683,17 @@ class ReshapeParameters(Transposable, SingleInputAndOutput, InsensitiveToQuantiz
     def get_parameter_size(self):
         return 0
 
+    def is_same_operation_as(self, other):
+        if not isinstance(other, ReshapeParameters):
+            return False
+        if tuple(self.old_shape.shape) != tuple(other.old_shape.shape):
+            return False
+        if tuple(self.shape.shape) != tuple(other.shape.shape):
+            return False
+        return True
+
     def get_output_size(self, in_dims):
         assert len(in_dims) == 1
-        self.in_dims = self.clone_dim_with_hints(in_dims)
         in_dim = in_dims[0]
         self._old_shape = in_dim
         if in_dim.size() != self.shape.size():
@@ -767,9 +774,8 @@ class UnconvertedOpParameters(UnexecutableOpParameters):
     def get_output_size(self, in_dims):
         if self.indicated_outputs:
             return self.indicated_outputs
-        self.in_dims = self.clone_dim_with_hints(in_dims)
-        if len(self.in_dims) == 1:
-            return [self.in_dims[0]]
+        if len(in_dims) == 1:
+            return [in_dims[0]]
         return [Dim.unknown()]
 
     @property
@@ -791,9 +797,8 @@ class UnknownOpParameters(UnexecutableOpParameters):
         self.info = info
 
     def get_output_size(self, in_dims):
-        self.in_dims = self.clone_dim_with_hints(in_dims)
-        if len(self.in_dims) == 1:
-            return [self.in_dims[0]]
+        if len(in_dims) == 1:
+            return [in_dims[0]]
         return [Dim.unknown()]
 
     @property

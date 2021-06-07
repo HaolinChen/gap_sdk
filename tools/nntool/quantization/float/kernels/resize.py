@@ -34,13 +34,14 @@ class BilinearResizerFloat32(KernelBase):
         if qrec is None:
             qrec = AllFloatQRec()
         in_tensor = qrec.prepare_inputs(params, in_tensors, ktype="float")[0]
+        in_dims, out_dims = cls.calc_transposed_dims(params)
         in_tensor = in_tensor.transpose(
-            params.in_dims[0].transpose_to_order(("h", "w", "c")))
-        w_out = params.out_dims[0].w
-        h_out = params.out_dims[0].h
-        c_out = params.out_dims[0].c
-        w_in = params.in_dims[0].w
-        h_in = params.in_dims[0].h
+            in_dims[0].transpose_to_order(("h", "w", "c")))
+        w_out = out_dims[0].w
+        h_out = out_dims[0].h
+        c_out = out_dims[0].c
+        w_in = in_dims[0].w
+        h_in = in_dims[0].h
         wstep = (w_in - 1) / w_out
         hstep = (h_in - 1) / h_out
         out_tensor = np.empty((h_out, w_out, c_out))
@@ -60,7 +61,7 @@ class BilinearResizerFloat32(KernelBase):
                     + P4 * wc * hc
 
         out_tensor = out_tensor.transpose(
-            params.out_dims[0].transpose_from_order(("h", "w", "c")))
+            out_dims[0].transpose_from_order(("h", "w", "c")))
         return qrec.get_outputs(params, [out_tensor], ktype="float")
 
 
@@ -76,13 +77,14 @@ class NearestNeighborResizerFloat32(KernelBase):
         if qrec is None:
             qrec = AllFloatQRec()
         in_tensor = qrec.prepare_inputs(params, in_tensors, ktype="float")[0]
+        in_dims, out_dims = cls.calc_transposed_dims(params)
         in_tensor = in_tensor.transpose(
-            params.in_dims[0].transpose_to_order(("h", "w", "c")))
-        w_out = params.out_dims[0].w
-        h_out = params.out_dims[0].h
-        c_out = params.out_dims[0].c
-        w_in = params.in_dims[0].w
-        h_in = params.in_dims[0].h
+            in_dims[0].transpose_to_order(("h", "w", "c")))
+        w_out = out_dims[0].w
+        h_out = out_dims[0].h
+        c_out = out_dims[0].c
+        w_in = in_dims[0].w
+        h_in = in_dims[0].h
         wstep = (w_in - 1) / (w_out - 1)
         hstep = (h_in - 1) / (h_out - 1)
         out_tensor = np.empty((h_out, w_out, c_out))
@@ -93,5 +95,5 @@ class NearestNeighborResizerFloat32(KernelBase):
                 out_tensor[i, j, :] = in_tensor[h_rounded, w_rounded, :]
 
         out_tensor = out_tensor.transpose(
-            params.out_dims[0].transpose_from_order(("h", "w", "c")))
+            out_dims[0].transpose_from_order(("h", "w", "c")))
         return qrec.get_outputs(params, [out_tensor], ktype="float")

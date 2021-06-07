@@ -35,8 +35,7 @@ class LinearSymmetric(KernelBase):
                 **kwargs):
         details = kwargs.get('details')
 
-        in_dims = params.in_dims[0]
-        out_dims = params.out_dims[0]
+        in_dims, out_dims = tuple(dims[0] for dims in cls.calc_transposed_dims(params))
         prepared_in_tensors = qrec.prepare_inputs(
             params, in_tensors, ktype="symmetric")
         prepared_in_tensors = apply_zero_offset_bias(

@@ -13,12 +13,9 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-from graph.types.others import ReshapeParameters
 import numpy as np
 from graph.dim import Conv2DFilterDim, DilationDim, Dim, StrideDim
-from graph.types.base import NNEdge
-from graph.types.conv2d import Conv2DParameters
-from graph.types.input_output import ConstantInputParameters
+from graph.types import ConstantInputParameters, Conv2DParameters, NNEdge
 from importer.common.provisional_dim import ProvisionalDim
 from importer.tflite2.common import LOG
 from importer.tflite2.common.tflite_node import TFLiteNode
@@ -86,24 +83,12 @@ class Conv2D(FilterMixin, BackendHandler):
                                       'out_c']],
                                   out_dims_hint=[['h', 'w', 'c']],
                                   constant_store=G.constant_store)
-        # if in_b is not None:
-        #     if in_b > 1:
-        #         raise ValueError(f'multi batch (n={in_b}) convolutions are not supported {node.name}')
-        #     rparams = ReshapeParameters(
-        #         f'{node.name}_batch',
-        #         old_shape=Dim.unnamed(x_shape),
-        #         shape=Dim.unnamed(x_shape[1::]))
-        #     G.add_edge(
-        #         NNEdge(from_node=x[0], to_node=rparams, from_idx=x[1], to_idx=0))
-        #     in_node = (rparams, 0)
-        # else:
-        #     in_node = x
-            
 
         G.add_edge(NNEdge(from_node=weights_node, to_node=params, to_idx=1))
         G.add_edge(NNEdge(from_node=bias_node, to_node=params, to_idx=2))
         cls.new_load_filter_parameters(
-            G, params, params.filter.actual_shape, params.filter.get_order_idx('out_c'),
+            G, params, params.filter.actual_shape, params.filter.get_order_idx(
+                'out_c'),
             node.input[0], weights_node, bias_node, node.output[0], opts)
 
         in_dim = Dim.named_ordered(h=h, w=w, c=in_c)

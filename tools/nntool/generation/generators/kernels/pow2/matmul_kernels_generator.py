@@ -17,22 +17,36 @@ import logging
 
 from generation.at_generators.cnn_convolution_pool_relu import \
     gen_activation_op
+from generation.at_generators.utils import at_bits
 from generation.at_types.gen_ctrl import GenCtrl
 from generation.generator_decorators import QREC_POW2, generation_function
-from graph.types import MatMulOpParameters
+from graph.types import (ActivationParameters, MatMulOpFusionParameters,
+                         MatMulOpParameters)
+from utils.node_id import NodeId
 
 from ..autotiler_kernel import NewAutoTilerKernel
 
 LOG = logging.getLogger("nntool." + __name__)
 
 
-@generation_function("kernels", (MatMulOpParameters,), qrec_types=(QREC_POW2, ))
+@generation_function("kernels", (MatMulOpParameters, MatMulOpFusionParameters), qrec_types=(QREC_POW2, ))
 def matmul_relu_kernels_generator(gen, node, qrec, in_eparams, out_eparams, cname):
     del in_eparams, out_eparams
 
     if len(node.in_dims[0].shape) == 2 and len(node.in_dims[1].shape) == 2:
+        if isinstance(node, MatMulOpFusionParameters):
+            cnodes = node.contained_nodes()
+            quants = [gen.G.quantization[NodeId(node, fnode)] for fnode in cnodes]
+            act_node = cnodes[-1] if isinstance(cnodes[-1],
+                                                ActivationParameters) else None
+            mul_qrec = quants[0]
+            act_qrec = quants[1]
+        else:
+            act_node = None
+            mul_qrec = qrec
+            act_qrec = None
         gen.kernels.append(MatMulReluKernel(
-            cname, node, qrec, None, None, gen_ctrl=node.get_gen_ctrl()))
+            cname, node, mul_qrec, act_node, act_qrec, gen_ctrl=node.get_gen_ctrl()))
         return True
     return False
 
@@ -40,14 +54,14 @@ def matmul_relu_kernels_generator(gen, node, qrec, in_eparams, out_eparams, cnam
 class MatMulReluKernel(NewAutoTilerKernel):
     CALL_TEMPLATE = '''
 // generator for {node_name}
-CNN_MatMul("{cname}", {gen_ctrl}, {at_bits(in1_q)}, {at_bits(in2_q)},
-           {at_bits(bias_q)}, {at_bits(out_q)}, {in1_q.q}, {in2_q.q}, {bias_q.q}, {out_q.q},
+CNN_MatMul("{cname}", {gen_ctrl}, {at_bits(in1_qtype)}, {at_bits(in2_qtype)},
+           {bias_bits}, {at_bits(out_qtype)}, {in1_qtype.q}, {in2_qtype.q}, {bias_q}, {out_qtype.q},
            1, 1, 1, 1,
-           {in1_shape[0]}, {in1_shape[1]}, {in2_shape[0]}, {in2_shape[1]}, 1, 1, 1, 1,
-           {relu_lower}, {relu_upper}, KOP_MATMUL, {act_op});
+           {in1_shape[1]}, {in1_shape[0]}, {in2_shape[1]}, {in2_shape[0]}, 0, 0, 1, 1,
+           {relu_lower}, {relu_upper}, {mult_op}, {act_op});
 '''
 
-    def __init__(self, cname, params, matmul_q, act_params, act_q, gen_ctrl=None):
+    def __init__(self, cname, params, matmul_qrec, act_params, act_qrec, gen_ctrl=None, out_qtype=None):
         if gen_ctrl is None:
             gen_ctrl = GenCtrl(None, cname=cname)
         else:
@@ -60,34 +74,43 @@ CNN_MatMul("{cname}", {gen_ctrl}, {at_bits(in1_q)}, {at_bits(in2_q)},
         in2_shape = params.in_dims[1].shape
         out_shape = params.out_dims[0].shape
 
-        in1_q = matmul_q.in_qs[0]
-        in2_q = matmul_q.in_qs[1]
-        out_q = matmul_q.out_qs[0]
-        bias_q = matmul_q.in_qs[2]
+        in1_qtype = matmul_qrec.in_qs[0]
+        in2_qtype = matmul_qrec.in_qs[1]
+        if len(matmul_qrec.in_qs) > 2:
+            bias_bits = at_bits(matmul_qrec.in_qs[2])
+            bias_q = matmul_qrec.in_qs[2].q
+            mult_op = 'KOP_MATMUL'
+        else:
+            bias_q = 0
+            bias_bits = 0
+            mult_op = 'KOP_MATMUL_NOBIAS'
 
         if act_params is not None:
             act_op = gen_activation_op(act_params.activation)
-            out_q = act_q.out_qs[0]
+            out_qtype = act_qrec.out_qs[0]
             relu_lower = 0
-            if act_params.activation == "relu6" and out_q.q != 0:
-                relu_upper = 6 << out_q.q
+            if act_params.activation == "relu6" and out_qtype.q != 0:
+                relu_upper = 6 << out_qtype.q
             else:
                 relu_upper = 0
         else:
+            out_qtype = matmul_qrec.out_qs[0]
             relu_upper = relu_lower = 0
             act_op = "KOP_NONE"
 
         # attributes used to test equality - i.e. this kernel can be reused
         attrs = {
-            'in1_q': in1_q,
-            'in2_q': in2_q,
+            'in1_qtype': in1_qtype,
+            'in2_qtype': in2_qtype,
             'bias_q': bias_q,
-            'out_q': out_q,
+            'bias_bits': bias_bits,
+            'out_qtype': out_qtype,
             'in1_shape': in1_shape,
             'in2_shape': in2_shape,
             'out_shape': out_shape,
             'relu_lower': relu_lower,
             'relu_upper': relu_upper,
+            'mult_op': mult_op,
             'act_op': act_op
         }
 

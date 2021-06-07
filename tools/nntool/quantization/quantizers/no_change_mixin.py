@@ -15,6 +15,7 @@
 
 import logging
 from copy import deepcopy
+from quantization.qtype import QType
 from quantization.new_qrec import QRec
 
 
@@ -28,26 +29,24 @@ class NoChangeMixin():
         force_out_q = force_out_qs and force_out_qs[0]
         forced_in_qs = [in_q for in_q in in_qs if in_q.forced]
         # two inputs cannot be forced to different values
-        if forced_in_qs and any(in_q != forced_in_qs[0] for in_q in forced_in_qs[1::]):
+        if forced_in_qs and not QType.forced_equal(*forced_in_qs):
             LOG.debug(
                 'two input qtypes of %s are forced to different qtypes - rejecting', params.name)
             return None
         # input cannot be forced to different value than output
-        if force_out_q and not all(not in_q.forced or in_q == force_out_q for in_q in forced_in_qs):
+        if force_out_q and not force_out_q.can_force(force_out_q, *in_qs):
             LOG.debug(
                 'output and input of %s are forced to different qtypes - rejecting', params.name)
             return None
 
         backwards = kwargs.get('backwards')
         if backwards:
-            # if output must be forced
-            assert force_out_q, f'going backwards at {params.name} but output is not forced'
-            in_qs = [deepcopy(force_out_q) for _ in in_qs]
-            return QRec(in_qs=in_qs, out_qs=[deepcopy(force_out_q)], ktype=ktype)
-
-        # if going forwards and our output is forced and does not match input then
-        # we cannot satisfy
-        if force_out_q and not all(in_q == force_out_q for in_q in in_qs):
+            if force_out_q:
+                in_qs = [deepcopy(force_out_q) for _ in in_qs]
+                return QRec(in_qs=in_qs, out_qs=[deepcopy(force_out_q)], ktype=ktype)
+        elif force_out_q and not all(in_q == force_out_q for in_q in in_qs):
+            # if going forwards and our output is forced and does not match input then
+            # we cannot satisfy
             LOG.debug(
                 "output of %s is forced and inputs don't match - rejecting", params.name)
             return None

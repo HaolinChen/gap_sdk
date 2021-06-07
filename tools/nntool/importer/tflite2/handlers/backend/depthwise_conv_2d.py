@@ -21,7 +21,6 @@ from importer.tflite2.common import LOG, check
 from importer.tflite2.common.tflite_node import TFLiteNode
 from importer.tflite2.tflite_schema_head.DepthwiseConv2DOptions import \
     DepthwiseConv2DOptions
-from utils.node_id import NodeId
 
 from ..backend_handler import BackendHandler
 from ..handler import tflite_op
@@ -41,6 +40,7 @@ class DepthwiseConv2D(FilterMixin, BackendHandler):
         inputs = [all_nodes[t] for t in node.input]
 
         x = inputs[0]
+        x = cls.remove_known_batch_dimension(G, x, node)
         x_shape = x[2].shape
         in_b, h, w, in_c = tuple(x_shape)
 

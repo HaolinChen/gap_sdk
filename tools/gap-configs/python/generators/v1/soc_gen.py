@@ -175,7 +175,10 @@ class Soc(object):
 
     if has_fc:
 
-      latency = 5
+      if has_fc_icache:
+        latency = 5
+      else:
+        latency = 0
 
       soc.soc_ico.fc_fetch_ico = Component(properties=OrderedDict([
         ('@includes@', [ "ips/interco/router.json" ]),
@@ -368,13 +371,24 @@ class Soc(object):
 
 
     if has_fc:
-      soc.fc = Component(properties=OrderedDict([
-          ('@includes@', [ "ips/riscv/%s.json" % tp.get_child_str('soc/fc/core') ]),
-          ('cluster_id', tp.get_child_int("soc/fc/cluster_id")),
-          ('core_id', tp.get_child_int("soc/fc/core_id")),
-          ('fetch_enable', tp.get_child_bool("soc/fc/fetch_enable")),
-          ('boot_addr', tp.get_child_str("soc/fc/boot_addr"))
-      ]))
+      if tp.get('soc/fc/core_config') is None:
+        soc.fc = Component(properties=OrderedDict([
+            ('@includes@', [ "ips/riscv/%s.json" % tp.get_child_str('soc/fc/core') ]),
+            ('cluster_id', tp.get_child_int("soc/fc/cluster_id")),
+            ('core_id', tp.get_child_int("soc/fc/core_id")),
+            ('fetch_enable', tp.get_child_bool("soc/fc/fetch_enable")),
+            ('boot_addr', tp.get_child_str("soc/fc/boot_addr"))
+        ]))
+      else:
+        core_config_dict = tp.get('soc/fc/core_config').get_dict()
+        core_config_dict.update(OrderedDict([
+              ('cluster_id', tp.get_child_int("soc/fc/cluster_id")),
+              ('core_id', tp.get_child_int("soc/fc/core_id")),
+              ('fetch_enable', tp.get_child_bool("soc/fc/fetch_enable")),
+              ('boot_addr', tp.get_child_str("soc/fc/boot_addr"))
+        ]))
+
+        soc.fc = Component(properties=core_config_dict)
 
 
     if l2_is_partitioned:
@@ -1074,7 +1088,7 @@ class Soc(object):
 
       for tap in taps:
         if tap.get_config().get_bool('has_io_port'):
-          tap.io = soc.soc_ico.debug
+            tap.io = soc.soc_ico.debug
         if tp.get_child_bool('**/apb_soc_ctrl/has_jtag_reg'):
           if tap.get_config().get_bool('has_confreg'):
             soc.apb_soc_ctrl.confreg_soc = tap.confreg_soc

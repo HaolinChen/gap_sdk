@@ -18,11 +18,8 @@ import os
 from typing import Generator, Sequence, Union
 
 import numpy as np
-from interpreter.commands.imageformat import insert_formatter
 from quantization.quantization_set import QuantizationSet
 from utils.graph import Graph, Node
-from utils.json_serializable import JsonSerializable
-from utils.node_id import NodeId
 
 from graph.dim import Dim
 from graph.dump_tensor import PrintDumper, dump_tensor
@@ -34,8 +31,10 @@ from graph.types import (ConstantInputParameters, ConvFusionParameters,
                          InputBaseParameters, InputParameters,
                          MultiplicativeBiasParameters, OutputParameters,
                          PaddedAddFusionParameters, ResizerParameters,
-                         SSDDetectorParameters)
+                         RNNBaseParameters, SSDDetectorParameters)
+from graph.types.base import Transposable
 from graph.types.expression_fusion import ExpressionFusionParameters
+from graph.types.others import TransposeParameters
 
 LOG = logging.getLogger("nntool." + __name__)
 
@@ -46,67 +45,6 @@ class NNGraphError(Exception):
 
 class GraphStepsNotCalculatedError(NNGraphError):
     pass
-
-
-class NNGraphChanges(JsonSerializable):
-    def __init__(self, init=None):
-        if init is not None:
-            self._changes = init['changes']
-            self._image_format = init.get('image_format') or {}
-            self._input_resizer = init.get('input_resizer') or {}
-            return
-        self._changes = []
-        self._image_format = {}
-        self._input_resizer = {}
-
-    def _encapsulate(self):
-        return {'changes': self._changes,
-                'image_format': self._image_format,
-                'input_resizer': self._input_resizer}
-
-    @classmethod
-    def _dencapsulate(cls, val):
-        return cls(init=val)
-
-    def image_format(self, input_node_name, formatter, normalizer):
-        if formatter is None and normalizer is None:
-            if input_node_name in self._image_format:
-                del self._image_format[input_node_name]
-            return
-        self._image_format[input_node_name] = {
-            "formatter": formatter, "normalizer": normalizer}
-
-    def input_resizer(self, input_node_name, resize_op, new_shape):
-        if resize_op is None:
-            if input_node_name in self._input_resizer:
-                del self._input_resizer[input_node_name]
-            return
-        self._input_resizer[input_node_name] = {
-            "resize_op": resize_op, "new_shape": new_shape}
-
-    def modify(self, node, attr, val, fnode=None):
-        nid = NodeId(node, fnode)
-        self._changes.append({
-            'nid': nid,
-            'attr': attr,
-            'val': val
-        })
-        if fnode is not None:
-            node = fnode
-        setattr(node, attr, val)
-
-    def replay(self, G):
-        for change in self._changes:
-            node = change['nid'].get_node(G)
-            setattr(node, change['attr'], change['val'])
-        graph_changed = False
-        for input_node_name, params in self._image_format.items():
-            graph_changed = True
-            input_node = G[input_node_name]
-            insert_formatter(
-                G, input_node, params["formatter"], params["normalizer"])
-        if graph_changed:
-            G.add_dimensions()
 
 
 class NNGraphState():
@@ -171,7 +109,6 @@ class NNGraph(Graph):
         self.graph_identity = GraphIdentity(filename)
         self._info = {
             'quantization': None,
-            'changes': NNGraphChanges()
         }
 
     @property
@@ -199,10 +136,6 @@ class NNGraph(Graph):
         self._info['has_quantized_parameters'] = val
 
     @property
-    def changes(self):
-        return self._info['changes']
-
-    @property
     def name(self) -> str:
         if self.graphname is None:
             base, _ = os.path.splitext(
@@ -217,6 +150,12 @@ class NNGraph(Graph):
     @property
     def outputs_dim(self) -> list:
         return [out_node.out_dims[0].shape for out_node in self.output_nodes()]
+
+    @property
+    def has_transposes(self) -> bool:
+        return any([isinstance(node, Transposable) and not isinstance(node, TransposeParameters) and
+                    (node.transpose_in or node.transpose_out)
+                    for node in self.nodes()])
 
     @name.setter
     def name(self, val):
@@ -233,6 +172,10 @@ class NNGraph(Graph):
     @property
     def has_expressions(self):
         return self.has_node_type(ExpressionFusionParameters)
+
+    @property
+    def has_rnn(self):
+        return self.has_node_type(RNNBaseParameters)
 
     @property
     def all_expressions(self):
@@ -349,10 +292,12 @@ class NNGraph(Graph):
         LOG.info("adjusted order")
         self.graph_identity.is_adjusted = True
 
-    def add_dimensions(self):
-        LOG.info("update graph dimensions")
+    def add_dimensions(self, quiet=False):
+        if not quiet:
+            LOG.info("update graph dimensions")
         self.graph_state.steps = add_dimensions(self)
-        LOG.info("calculate liveness")
+        if not quiet:
+            LOG.info("calculate liveness")
         self.graph_state.liveness = calculate_liveness(
             self,
             self.graph_state.steps)

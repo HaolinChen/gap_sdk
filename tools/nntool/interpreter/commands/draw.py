@@ -30,9 +30,9 @@ class DrawCommand(NNToolShellBase):
                              completer_method=NNToolShellBase.node_step_or_name_completer)
     parser_draw.add_argument('-s', '--show_constants', action='store_true',
                              help='Show constant parameters nodes')
-    parser_draw.add_argument('-a', '--all_dims',
+    parser_draw.add_argument('-a', '--all_edges',
                              action='store_true',
-                             help='Show all dimensions on all inputs and outputs even '
+                             help='Show labels on all inputs and outputs even '
                              'if destination or source node is not selected')
     parser_draw.add_argument('--expressions',
                              choices=['quantized', 'unquantized'],
@@ -74,7 +74,7 @@ Render the graph to a simple image."""
             self.perror('no nodes selected')
             self.do_help('draw')
             return
-        DrawGraphReporter().report(self.G, nodes=nodes, all_dims=args.all_dims,
+        DrawGraphReporter().report(self.G, nodes=nodes, all_dims=args.all_edges,
                                    filename=args.file, view=args.file is None,
                                    anonymise=args.anonymise, expressions=args.expressions,
                                    quant_labels=args.quant_labels)

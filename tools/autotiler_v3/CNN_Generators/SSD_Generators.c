@@ -1,6 +1,7 @@
 #include <stdint.h>
 #include <stdio.h>
 #include "AutoTilerLib.h"
+#include "SSD_Generators.h"
 #include "SSD_BasicKernels.h"
 //#include "AutoTilerLibTypes.h"
 /*#include "CNN_Generators.h"

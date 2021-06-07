@@ -37,6 +37,7 @@ typedef enum {
 	KOP_SETBIAS_DP,
         KOP_CONV_HWCE,
         KOP_CONV,
+        KOP_CONV1D,
         KOP_CONV_DP,
         KOP_CONV1D_DP,
         KOP_CONV_DW,
@@ -72,6 +73,7 @@ typedef enum {
         KOP_MATMUL_SM1,
         KOP_MATMUL_SCALE,
         KOP_MATMUL_SCALE_SCALAR,
+        KOP_MATMUL_TRANSPOSED,
         KOP_MATMUL_SCALE_SM1,
         KOP_MATMUL_SCALE_SCALAR_SM1,
 	KOP_MATSCALE_VECTOR,
@@ -153,6 +155,12 @@ typedef enum {
 
 	KOP_DP_REDUCT_UNSIGNED,
 
+	KOP_NORM_RGB565,
+	KOP_NORM_RGB888,
+	KOP_NORM_RGB16,
+	KOP_NORM_BW,
+	KOP_NORM_BW16,
+
 	KOP_LAST
 
 } KernelOper_T;
@@ -208,6 +216,8 @@ typedef enum {
 	KER_ITER_D3=6,
 	KER_ITER_LAST=7		/**< Marker for last */
 } KernelIteratorT;
+
+#define IS_LEGAL_SPACE(Space)		(((Space)>=KER_ITER_TILE0) && ((Space)<KER_ITER_LAST))
 
 #define ITER_SPACE_MASK			0x0FFFF
 #define ITER_PROP_MASK			0x0FFFF0000
@@ -406,6 +416,7 @@ typedef enum {
 
 	TC_ARG_PLUS_OFFSET = 48,	/**< A C argument plus an immediate offset */
 	TC_ARG_PLUS_C_OFFSET = 49,	/**< A C argument plus a C variable name offset */
+	KER_ARG_SEL_LAST
 } KernelArgSelect_T;
 
 /// @cond PrivateStuff
@@ -600,12 +611,17 @@ typedef struct AChannelList_T ChannelList_T;
 typedef struct ABufferList_T BufferList_T;
 
 typedef enum {
+	CTXT_BK_CALL,	/* Context is basic kernel call */
+	CTXT_KG_CALL,	/* Context is Kernel Group call */
+	CTXT_GR_CALL,	/* Context is Graph call */
+} ExprContext_T;
+
+typedef enum {
         /* Unary */
-        AE_UMINUS,
+        AE_UMINUS=1,
         AE_UPLUS,
         AE_BNOT,
         AE_NOT,
-        AE_CAST,
 
         /* Diadic */
         AE_MULT,
@@ -632,7 +648,7 @@ typedef enum {
         AE_AND,
         AE_OR,
 
-        /* SubScript */
+        AE_CAST,
 	AE_SUBSCR,
 
         /* Conditional */
@@ -644,20 +660,42 @@ typedef enum {
 	AE_IDENT,
 	AE_CARG,
 	AE_KARG,
+	AE_GARG,
+	AE_GLOC,
+
+	/* Type related */
+	AE_POINTER,
+	AE_TYPENAME,
+
+	AE_LAST,
 } ArgExprOper_T;
+
+typedef enum {
+	AET_VOID=1,
+	AET_CHAR,
+	AET_SHORT,
+	AET_INT,
+	AET_LONG,
+	AET_FLOAT,
+	AET_DOUBLE,
+	AET_SIGNED,
+	AET_UNSIGNED,
+} ArgExprOperType_T;
 
 typedef struct A_ArgExpr_T ArgExpr_T;
 typedef struct A_ArgExpr_T {
-        ArgExprOper_T		Oper;
-	KernelArgSelect_T 	SubOper;
+        ArgExprOper_T		Oper	:8;
+	KernelArgSelect_T 	SubOper	:8;
+	KernelIteratorT		Space	:8;
+	unsigned int			:8;
         union {
                 struct {
                         ArgExpr_T *Sel;
                         ArgExpr_T *Left;
                         ArgExpr_T *Right;
                 } SubT;
-                int64_t Int;
-                double Float;
+                int Int;
+                float Float;
                 NameT *Id;
         } V;
 } ArgExpr_T;
@@ -832,6 +870,7 @@ typedef struct A_CKernel_Arg_T {
 	CArg_Descriptor_T *ArgInfo;
 	NameT *KerArgAccessType;
 	ArgBindingDescr_T *List;
+	ArgExpr_T *ArgExpr;
 } CKernel_Arg_T;
 
 typedef struct AGraphArgList_T GraphArgList_T;
@@ -859,6 +898,7 @@ typedef struct AArgBindingDescr_T {
 	KernelIteratorT ItSpace;	/* In case an iterator name is needed */
 	NameT *KerArgAccessType;
 	ArgBindingDescr_T *List;
+	ArgExpr_T *ArgExpr;
 } ArgBindingDescr_T;
 
 typedef struct {
@@ -870,10 +910,21 @@ typedef struct {
 	ArgBindingDescr_T **BindingList;
 } CKernelCall_T;
 
+typedef enum {
+	US_NONE = 0,
+	US_INT = 1,
+	US_FLOAT = 2,
+	US_TYPE = 3,
+} UserSymbolType_T;
+
 typedef struct {
 	NameT *Name;
-	int Value;
-} KernelDynamicSymbol_T;
+	UserSymbolType_T Type;
+	union {
+		int Int;
+		float Float;
+	} V;
+} UserSymbol_T;
 
 typedef enum {
 	ARG_INT=0,
@@ -1076,8 +1127,8 @@ typedef struct A_Kernel_T {
 	unsigned int CCallsCount;
 	CKernelCall_T **CCalls;
 	unsigned int BaseIndex;
-	unsigned int DynSymbolCount;
-	KernelDynamicSymbol_T **DynSymbol;
+	unsigned int UserSymbolCount;
+	UserSymbol_T **UserSymbol;
 	unsigned int UsedL1Memory;
 	unsigned int UsedL2Memory;
 	KernelInfos_T *KerInfos;
@@ -1105,6 +1156,7 @@ typedef struct {
 	char MFCCDbInsteadOfLog; /* if != 0 the MFCC will compute 10*log10(mel_spectrogram) instead of ln(mel_spectrogram) */
 	char DynamicIter;	/* if != 0 to enable dynamic iteration count */
 	char Force_8BitsOutput;	/* Forces 8 bits output for some layers, e.g. Softmax */
+	char HWCLayout; 	/* Choose HWC layer layout, default =0 */
 } CNN_GenControl_T;
 
 typedef struct {

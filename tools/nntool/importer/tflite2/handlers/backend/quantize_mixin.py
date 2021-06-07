@@ -51,6 +51,10 @@ class QuantizeMixin(ConstantMixin):
             if in_qtype == out_qtype:
                 LOG.info('removing (de)quantize node %s with no effect', node.name)
                 params = NoOPParameters(node.name, desc="quantize with no effect")
+            elif in_qtype.dtype == out_qtype.dtype:
+                LOG.info('removing (de)quantize node %s with scale change', node.name)
+                params = NoOPParameters(node.name, desc="quantize with scale change")
+                out_qtype = in_qtype
             else:
                 params = QuantizeParameters(
                     node.name, from_qtype=in_qtype, to_qtype=out_qtype)

@@ -17,7 +17,7 @@ import logging
 
 import numpy as np
 from graph.types import (BinaryOpParameters, GlobalPoolParameters,
-                         MatMulOpParameters, MatrixAddParameters,
+                         MatrixAddParameters,
                          MatrixBroadcastedLinearOpParameters,
                          MatrixSubParameters, MatScaleFusionParameters,
                          UnaryOpParameters)
@@ -34,7 +34,7 @@ from ..pow2_quantization_handler import Pow2QuantizionHandler
 LOG = logging.getLogger('nntool.' + __name__)
 
 
-@params_type(MatrixAddParameters, MatrixSubParameters, MatMulOpParameters,
+@params_type(MatrixAddParameters, MatrixSubParameters,
              MatrixBroadcastedLinearOpParameters,
              MatScaleFusionParameters, GlobalPoolParameters, BinaryOpParameters, UnaryOpParameters,
              FusionInputParameters)

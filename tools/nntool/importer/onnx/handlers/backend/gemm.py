@@ -77,7 +77,8 @@ class Gemm(PromoteLinearMixin, BackendHandler):
             f'{valid_name}_biases', dims=Dim.unnamed(biases.shape), value=biases)
 
         params = FcParameters(valid_name, filt=filt_dim, has_bias=True,
-                              in_dims_hint=[['c']],
+                            #   in_dims_hint=[['c']],
+                              in_dims_hint=[None, ['out_c', 'in_c'], ['out_c']],
                               out_dims_hint=[['c']],
                               constant_store=G.constant_store)
 

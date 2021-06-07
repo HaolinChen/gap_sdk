@@ -23,7 +23,9 @@ from graph.types import (ConcatParameters, ConstantInputParameters,
                          PadParameters, ReshapeParameters, ReverseParameters,
                          SensitiveToOrder, SplitParameters,
                          StridedSliceParameters, Transposable)
+from graph.types.fusions import MatMulOpFusionParameters
 from graph.types.others import TransposeParameters
+from graph.types.tensor_arithmetic import MatMulOpParameters
 from utils.compatible_transposes import (find_all_compatible_transposes,
                                          find_combination)
 from utils.node_id import NodeId
@@ -106,6 +108,7 @@ def search_up_for_reverse(G, visited_edges, node, out_idx, edge, transpose, done
         qrec = G.quantization and G.quantization[NodeId(node)]
         return [ReorderLinear.out_from_history(node, transpose_history, qrec), EndActionUp(node)]
 
+    extra_actions = []
     if isinstance(node, Transposable):
         if node.transpose_out:
             if transpose and reverses_transpose(node.transpose_out[out_idx], transpose, node.out_dims[out_idx]):
@@ -121,7 +124,7 @@ def search_up_for_reverse(G, visited_edges, node, out_idx, edge, transpose, done
                 LOG.info(
                     "rejected %s - transpose out - does not reverse", node.name)
                 return []
-        elif isinstance(node, InputParameters) and not node.fixed_order:
+        elif isinstance(node, InputParameters) and not node.fixed_order and G.num_out_edges(node.name) == 1:
             LOG.info(
                 "accepted %s - input without fixed order - transpose input %s", node.name, transpose)
             done_edges |= visited_edges
@@ -131,6 +134,11 @@ def search_up_for_reverse(G, visited_edges, node, out_idx, edge, transpose, done
                 "accepted %s - constant input - transpose constant %s", node.name, transpose)
             done_edges |= visited_edges
             return [ReorderConstantInput.from_history(node, transpose_history, transpose=transpose), EndActionUp(node)]
+        # elif isinstance(node, (MatMulOpParameters, MatMulOpFusionParameters)) and len(node.in_dims) == 2:
+        #     if len(transpose) != 2:
+        #         raise ValueError(f'strange transpose length into matmul node {node.name} {transpose}')
+        #     extra_actions.append(TransposeMatMulOpAction(node))
+        #     transpose = [transpose[idx] for idx in [1, 0]]
         elif not node.eliminate_transposes_pass_up:
             LOG.info("rejected %s - transpose out - cannot pass", node.name)
             return []
@@ -152,7 +160,6 @@ def search_up_for_reverse(G, visited_edges, node, out_idx, edge, transpose, done
         if new_transpose is None and len(node.old_shape) > 1:
             LOG.info("rejected %s - transpose in - does not reverse", node.name)
             return []
-        extra_actions = []
         if G.num_out_edges(node.name) > 1:
             # here we have a reshape with multiple edges that we can pass
             # insert transposes on all the other edges. We will try to eliminate those on the next pass
@@ -184,6 +191,10 @@ def search_up_for_reverse(G, visited_edges, node, out_idx, edge, transpose, done
         ])
 
         if node.transpose_in:
+            if node.transpose_in and len(node.transpose_in) > 1:
+                LOG.info(
+                    "rejected %s - cannot pass multi in edge transpose", node.name)
+                return []
             if new_transpose is None:
                 LOG.info(
                     "rejected %s - transpose is None - cannot pass another transpose", node.name)
@@ -195,12 +206,10 @@ def search_up_for_reverse(G, visited_edges, node, out_idx, edge, transpose, done
 
         transpose = new_transpose
     else:
-        if transpose is None:
-            extra_actions = []
-        else:
-            extra_actions = [
+        if transpose is not None:
+            extra_actions.append(
                 SetHintAction(node, 'out', out_idx, transpose=transpose)
-            ]
+            )
             if node.__class__ in TRANSIENT_ACTIONS:
                 extra_actions.append(TRANSIENT_ACTIONS[node.__class__](
                     node, transpose))

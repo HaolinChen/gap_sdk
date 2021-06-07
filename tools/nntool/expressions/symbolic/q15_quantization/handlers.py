@@ -34,7 +34,7 @@ from .clip_norm import Clip, Norm
 from .q15_scale_float import Q15ScaleFloat
 from .q15_scale_q_rec import Q15ScaleQRec
 from .q15_scaled_quantization import Q15ScaledQuantization
-from .quantized_constant import QuantizedConstant
+from .quantized_constant import QuantizedConstant, QuantizedValue
 from .scale_quantized import ScaleQuantized
 
 
@@ -125,6 +125,19 @@ class BasicVariableQuant(Q15ScaledQuantization):
             return None
         max_val = qtype.scale[0] * math.pow(2, q)
         return Q15ScaleQRec(dtype, max_val, q, max_val=max_val, min_val=-max_val)
+
+
+@qhandler("Q15Scale", QuantizedValue)
+class BasicQuantizedQ15QuantizedValue(Q15ScaledQuantization):
+
+    @classmethod
+    def _quantize(cls,
+                  sym: Symbol,
+                  sym_ctrl: SymbolStats,
+                  qrec: Q15ScaleQRec = None,
+                  **kwargs) -> Tuple[Symbol, Q15ScaleQRec]:
+        return (sym.contents[0], sym.qrec)
+
 
 class BasicFunctionQuant(Q15ScaledQuantization):
 
@@ -272,6 +285,18 @@ class BasicDivQ15Quant(BasicFunctionQuant):
 
         in_syms, in_qrecs = zip(*[cls.quantize(inner_sym, sym_ctrl, **kwargs)
                                   for inner_sym in sym.contents])
+
+        if isinstance(in_syms[1], Constant) and np.prod(in_syms[1].shape) == 1:
+            value = 1 / in_qrecs[1].dequantize(in_syms[1].value)
+            # wrap the incoming value in a QuantizedValue object so that it will
+            # return the current quantization
+            return BasicMulQ15Quant.quantize(
+                Mul(
+                    QuantizedValue(
+                        in_syms[0], qrec=in_qrecs[0], name=in_syms[0].name),
+                    Constant(value, name=in_syms[1].name, shape=in_syms[1].shape),
+                    name=sym.name),
+                sym_ctrl)
 
         # LHS and RHS must be Q15 maximum
         # Then move both to the highest Q and shift lhs by that Q
@@ -620,6 +645,7 @@ class BasicQ15_Q4_12SinCosQuant(BasicFunctionQuant):
             qsym = Sin_Q15
         return (qsym(lhs), out_qrec)
 
+
 @nargs(1)
 @environment({
     'tanh_lut': tanh_lut,
@@ -636,6 +662,7 @@ class TanHLUT(Function):
     def _c_expr(self, *args, **kwargs):
         return "Tanh(%s)" % (args[0],)
 
+
 @nargs(1)
 @environment({
     'sigmoid_lut': sigmoid_lut,
@@ -651,6 +678,7 @@ class SigmoidLUT(Function):
 
     def _c_expr(self, *args, **kwargs):
         return "Sigmoid(%s)" % (args[0],)
+
 
 @qhandler("Q15Scale", TanH, Sigmoid)
 class BasicQ12Q15TanHSigmoidQuant(BasicFunctionQuant):
@@ -669,12 +697,14 @@ class BasicQ12Q15TanHSigmoidQuant(BasicFunctionQuant):
         # output is Q15 * 1
         out_qrec = Q15ScaleQRec(np.int32, 1, 15)
         in_syms, in_qrecs = cls.cast_symbols(in_syms, in_qrecs)
-        lhs = ScaleQuantized(in_syms[0], from_qrec=in_qrecs[0], to_qrec=calc_qrec)
+        lhs = ScaleQuantized(
+            in_syms[0], from_qrec=in_qrecs[0], to_qrec=calc_qrec)
         if isinstance(sym, TanH):
             qsym = TanHLUT
         else:
             qsym = SigmoidLUT
         return (qsym(lhs), out_qrec)
+
 
 @qhandler("Q15Scale", Abs)
 class BasicQ17Q15NoChangeQuant(BasicFunctionQuant):

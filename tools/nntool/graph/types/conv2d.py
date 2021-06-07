@@ -139,26 +139,23 @@ class Conv2DParameters(FilterLikeParameters, MultiplicativeBiasParameters, Trans
         return self._at_options
 
     def get_output_size(self, in_dims):
-
-        self.in_dims = self.clone_dim_with_hints(in_dims)
-        in_dims = self.in_dims[0]
-
+        in_dim = in_dims[0]
         if self.transpose_in and self.transpose_in[0]:
-            in_dims = in_dims.calc_transpose(self.transpose_in[0])
+            in_dim = in_dim.calc_transpose(self.transpose_in[0])
 
-        assert in_dims.c >= self.groups,\
+        assert in_dim.c >= self.groups,\
             "The number of groups cannot be larger than the amount of input channels"
-        self.filter.in_c = in_dims.c // self.groups
+        self.filter.in_c = in_dim.c // self.groups
         if self.padding.is_same:
             self.padding.calculate_same(
-                in_dims, self.filter, self.stride, dilation=self.dilation)
+                in_dim, self.filter, self.stride, dilation=self.dilation)
         filter_d = self.filter + (self.filter - 1) * (self.dilation - 1)
 
         pad = self.padding.height_width()
 
-        out_dim = ((in_dims - filter_d + pad)//self.stride) + 1
+        out_dim = ((in_dim - filter_d + pad)//self.stride) + 1
         out_dim.c = self.filter.out_c
-        out_dim.impose_order(in_dims.order)
+        out_dim.impose_order(in_dim.order)
         if self.transpose_out and self.transpose_out[0]:
             out_dim = out_dim.calc_transpose(self.transpose_out[0])
         return [out_dim]
@@ -201,8 +198,7 @@ class TransposeConv2DParameters(FilterParameters, FilterLikeParameters, Transpos
 
     def get_output_size(self, in_dims):
 
-        self.in_dims = self.clone_dim_with_hints(in_dims)
-        in_dims = self.in_dims[0]
+        in_dims = in_dims[0]
 
         if self.transpose_in and self.transpose_in[0]:
             in_dims = in_dims.calc_transpose(self.transpose_in[0])

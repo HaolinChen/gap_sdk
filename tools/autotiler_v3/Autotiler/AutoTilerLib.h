@@ -303,9 +303,23 @@ void InitKernelIterInfos(
 
 Define one user defined symbol with associated value.
 */
-KernelDynamicSymbol_T *S_Dyn(
+UserSymbol_T *S_Dyn(
 	char *Name,	/**< Name of the user defined symbol */
 	int Value	/**< Value of the user defined symbol */
+	);
+
+UserSymbol_T *US_Int(
+	char *Name,	/**< Name of the user defined symbol */
+	int Value	/**< Value of the user defined symbol */
+	);
+
+UserSymbol_T *US_Float(
+	char *Name,	/**< Name of the user defined symbol */
+	float Value	/**< Value of the user defined symbol */
+	);
+
+UserSymbol_T *US_Type(
+	char *Name	/**< Name of the user defined symbol */
 	);
 
 /**
@@ -313,7 +327,7 @@ KernelDynamicSymbol_T *S_Dyn(
 
 Define user defined symbols with associated value. Used in non inlined code generation.
 */
-KernelDynamicSymbol_T **KerDynamicSymbols(
+UserSymbol_T **KerDynamicSymbols(
 	int SCount,	/**< Number of pairs (SymbolName, SymbolValue) */
 	...);
 
@@ -700,6 +714,10 @@ ArgBindingDescr_T *Ker_IteratorIndex(
 	KernelIteratorT Sel		/**< Selected iteration space */
 	);
 
+
+ArgBindingDescr_T *BindKExpr(
+	char *Expr
+	);
 
 /**
 @brief Binds argument to a user kernel argument (a tiled argument).

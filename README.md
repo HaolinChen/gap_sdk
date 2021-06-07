@@ -3,36 +3,39 @@
 [GWT-logo]: logo.png
 [GWT-link]: https://greenwaves-technologies.com/
 
-# Setting up the GAP8 SDK
+# Setting up the GAP SDK
 
 ## About
 
-The GAP8 SDK allows you to compile and execute applications on the GAP8 IoT
+The GAP SDK allows you to compile and execute applications on the GAP IoT
 Application Processor. This SDK is an extract of the necessary elements from
 the [pulp-sdk](https://github.com/pulp-platform/pulp-sdk) produced by the PULP
-project, to provide a development environment for the GAP8 series processors.
+project, to provide a development environment for the GAP series processors.
 
-We provide you with a set of tools and two different operating systems for GAP8:
+We provide you with a set of tools and two different operating systems for GAP:
 
 * [Tools](https://greenwaves-technologies.com/tools-and-software/)
-  * GAP8 RISCV GNU toolchain: a pre-compiled toolchain inherited from RISC V
+  * GAP RISCV GNU toolchain: a pre-compiled toolchain inherited from RISC V
       project with support for our extensions to the RISC-V Instruction Set
       Architecture.
-     * Program / control GAP8
+     * Program / control GAP
      * Debug your application using GDB
      * Program the GAPuino flash memory with applications
   * [NNTOOL](https://github.com/GreenWaves-Technologies/gap_sdk/blob/master/tools/nntool/README.md):
     a set of tools based on Python helps to port NN graphs from various NN
-    training packages to GAP8
+    training packages to GAP
+  * [GVSOC](https://gvsoc.readthedocs.io/en/latest/)
+    GVSOC is a lightweight and flexible instruction set simulator which can simulate GreenWaves' GAP series processors. GVSOC allows execution of programs on a virtual platform without any hardware limits. Thanks to device models, full application with real device drivers can be simulated. Currently, we provide simulations of devices such as cameras, microphones, LCDs, etc.
+  * [Profiler] Profiler is a part of GWT GAP SDK and used with GVSOC, GWT Full System SoC Simulator. Profiler gives a visual view of what is happening inside the chip and allows to control the simulator through a graphic interface. Profiler is an extremely useful tool for developing and debugging applications on GAP processors.
   * [Autotiler](https://greenwaves-technologies.com/manuals/BUILD/AUTOTILER/html/index.html):
-    a code generator for GAP8, which can generate a user algorithm (CNN,
+    a code generator for GAP, which can generate a user algorithm (CNN,
     MatrixAdd, MatrixMult, FFT, MFCC, etc) with optimized memory management.
   * gapy: a Python utility for building the flashimage, creating
     partitions and filesystems, executing OpenOCD, etc.
 * Operating Systems
   * PULP OS - The open source embedded RTOS produced by the PULP project
   * FreeRTOS - FreeRTOS is an open source real-time operating system.
-    GreenWaves Technologies has ported it to GAP8.
+    GreenWaves Technologies has ported it to GAP.
   * PMSIS - PMSIS is an open-source system layer which any operating system
     can implement to provide a common API to applications. We currently provide
     it for PULP OS and FreeRTOS, and it is used by our applications to be
@@ -119,37 +122,12 @@ The following instructions assume that you install the GAP SDK into your home
 directory. If you want to put it somewhere else then please modify them
 accordingly.
 
-### Ubuntu 16.04
-
-You can follow the steps for Ubuntu 18.04 except for the following instructions.
-
-After you have installed the system packages with apt-get,  you need to also
-create this symbolic link:
-
-~~~~~shell
-sudo ln -s /usr/bin/libftdi-config /usr/bin/libftdi1-config
-~~~~~
-
-Also, you may need to install git lfs
-
-~~~~~shell
-curl -s https://packagecloud.io/install/repositories/github/git-lfs/script.deb.sh | sudo bash
-sudo apt-get install git-lfs
-git lfs install
-~~~~~
-
 ## Download and install the toolchain
 
-Now clone the GAP8 SDK and the GAP8/RISC-V toolchain:
+Now clone the GAP SDK and the GAP/RISC-V toolchain:
 
 ~~~~~shell
 git clone https://github.com/GreenWaves-Technologies/gap_riscv_toolchain_ubuntu_18.git
-~~~~~
-
-In case you use an old git version, you may need to use these commands instead:
-
-~~~~~shell
-git lfs clone https://github.com/GreenWaves-Technologies/gap_riscv_toolchain_ubuntu_18.git
 ~~~~~
 
 Install the toolchain (this may require to launch the script through sudo):
@@ -178,26 +156,16 @@ source sourceme.sh
 or
 
 ~~~~~shell
-# replace gapuino_v2.sh by the board you want
-source config/gapuino_v2.sh
+# replace gapuino_v3.sh by the board you want
+source config/gapuino_v3.sh
 ~~~~~
 
 If you directly source the board config, you need to source the appropriate
-config file for the board that you have. The SDK supports 2 boards (gapuino
-and gapoc) and each of them can use version 1 or version 2 of the GAP8 chip.
-Boards bought before 10/2019 contains GAP8 version 1 and use a USB B plug for
-JTAG while the ones bought after contains version 2 and use a USB micro B for
-JTAG.
-
-Hereafter you can find a summary of the available boards and their
-configuration file.
-
-| Board   | Chip    | Config file           |
-|:-------:|:-------:|:---------------------:|
-| Gapuino | GAP8 v1 | configs/gapuino.sh    |
-| Gapuino | GAP8 v2 | configs/gapuino_v2.sh |
-| Gapoc   | GAP8 v1 | configs/gapoc_a.sh    |
-| Gapoc   | GAP8 v2 | configs/gapoc_a_v2.sh |
+config file for the board that you have. The SDK supports 3 boards (gapuino, 
+gapoc_a and gapoc_b) and each of them can use version 1/2/3 of the GAP8 chip. 
+Boards bought before 10/2019 contains GAP8 version 1 and use a USB B plug for 
+JTAG while the ones bought after contains version 2/3 and use a USB micro B 
+for JTAG.
 
 Once the proper config file is sourced, you can proceed with the SDK build.
 
@@ -221,6 +189,7 @@ can install with this command from GAP SDK root folder:
 
 ~~~~~shell
 pip3 install -r requirements.txt
+pip3 install -r doc/requirements.txt
 ~~~~~
 
 ### SDK install
@@ -368,6 +337,14 @@ You can also run this example on the GAP virtual platform with this command:
 make clean all run platform=gvsoc PMSIS_OS=freertos/pulpos
 ~~~~~
 
+### Using the virtual platform with profiler
+
+#### Using GAP Profiler
+You can open the doc : gap_sdk/doc/_build/html/index.html and find Tools -> Profiler
+
+In the doc, we will show you how to install and use the profiler step by step. 
+
+#### Using VCD traces with GTKWave
 You can also generate VCD traces to see more details about the execution:
 
 ~~~~~shell
@@ -420,16 +397,12 @@ flash. Be careful that this is a permanent operation, even though it will still
 be possible to boot from JTAG. This will just always boot from flash when you
 power-up the board or reset it.
 
-To program the efuses, execute the following command and follow the instructions:
+To program the efuses, please read the [README](./tools/gap_fuser/README.md) and 
+use the fuser tool to program your efuse. 
 
-~~~~~shell
-# if using hyperflash:
-openocd-fuser-hyperflash
-# if using spiflash:
-openocd-fuser-spiflash
-~~~~~
+## Console IO via uart
 
-If you choose to boot your application from Flash, and you want to view the
+If you choose to boot your application from Flash, and/or you want to view the
 output of printf's in your code then you can first compile your application
 with the printf redirected on the UART with this command:
 
@@ -446,102 +419,6 @@ cutecom&
 
 Then please configure your terminal program to use /dev/ttyUSB1 with a 115200
 baud rate, 8 data bits and 1 stop bit.
-
-## Vscode integration
-
-SDK examples can be compiled and run on boards from Vscode.
-
-### Setup
-
-The GDB version included in the GAP toolchain is too old to properly work with the debug, you need to download and install the riscv toolchain and make sure riscv64-unknown-elf-gdb is in the PATH.
-
-Vscode is using some files such as tasks.json and launch.json to know how to build and run on the target.
-
-Once the SDK is configured, you can generate a sample version of these files from an example with:
-
-~~~~~shell
-cd examples/pmsis/helloworld
-make vscode
-~~~~~
-
-Everything should be properly setup for building the example but you need to modify a few files for the execution. For the build, you may just need to modify the file .vscode/script/build.sh to put the proper platform on this command:
-~~~~~shell
-make all platform=fpga
-~~~~~
-
-
-Then modify .vscode/tasks.json and modify the openocd command to put the absolute path to the files and add any needed option:
-
-~~~~~shell
-"command": "<OCD install path>/openocd.exe -f <OCD install path>/scripts/tcl/interface/ftdi/olimex-arm-usb-ocd-h.cfg -f <SDK install path>/tools/gap8-openocd-tools/tcl/gap9revb.tcl"
-~~~~~
-
-And finally modify .vscode/launch.json and modify the gdb command to match your IP address and openocd gdb port:
-
-~~~~~shell
-"text": "target extended-remote <IP address>:3333",
-~~~~~
-
-### Launch Vscode
-
-From your example folder, execute:
-
-~~~~~shell
-code .
-~~~~~
-
-You should see vscode with all the files from your example visible on the left panel. You can now edit and save all the files.
-
-### Build the example
-
-Click on "Terminal"->"Run Task"->"Build from Makefile"->"Continue without scanning the task output" to build your test.
-
-Check any problem that occurs in the terminal window of vscode. If you don’t see anything happening, you may have run vscode without the --log trace option.
-
-
-### Launch Openocd
-
-Click on "Terminal"->"Run Task"->"Openocd"->"Continue without scanning the task output"
-
-You should see on the terminal window, Openocd being launched and connecting to the target.
-
-You can keep this terminal opened for several runs of your test, and you can kill it with the trash icon if something goes really wrong or you want to close it.
-
-
-### Launch the example
-
-Click on "Run"->"Start Debugging" and then do normal vscode debug operations, like running, stopping, adding breakpoints and so on.
-
-All the printf from the application is visible on the openocd terminal.
-
-
-
-## Documentation
-
-Build the documentation:
-
-~~~~~shell
-cd gap_sdk
-make docs
-~~~~~
-
-If you haven't download and install the autotiler, you will probably have some
-warnings when you build the docs.
-All the documentations are available on [our website](https://greenwaves-technologies.com/en/sdk/).
-
-You can read the documentation by opening gap_doc.html in the docs folder in
-your browser:
-
-~~~~~shell
-firefox docs/gap_doc.html
-~~~~~
-
-If you would like PDF versions of the reference manuals you can do:
-
-~~~~~shell
-cd docs
-make pdf
-~~~~~
 
 ## Upgrading/Downgrading the SDK
 

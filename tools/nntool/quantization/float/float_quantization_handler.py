@@ -13,6 +13,7 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+from quantization.qtype import QType
 import numpy as np
 from bfloat16 import bfloat16
 
@@ -46,3 +47,14 @@ class FloatQuantizionHandler(QuantizionHandler):
         if dtype is None:
             raise ValueError(f'invalid float_type {float_type}')
         return force_out_qs, dtype
+
+    @classmethod
+    def _get_in_qs_from_stats(cls, params, stats, in_qs, **kwargs):
+        float_type = kwargs['opts']['float_type']
+        dtype = FLOAT_DTYPES.get(float_type)
+        if dtype is None:
+            raise ValueError(f'invalid float_type {float_type}')
+        return [QType(min_val=stats['range_in'][idx]['min'],
+                      max_val=stats['range_in'][idx]['max'],
+                      dtype=dtype) if dim is not None else None
+                for idx, dim in enumerate(params.in_dims)]

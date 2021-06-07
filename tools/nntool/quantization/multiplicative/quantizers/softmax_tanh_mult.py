@@ -26,7 +26,7 @@ from ..mult_quantization_handler import MultQuantizionHandler
 
 
 @params_type(SoftMaxParameters, HTanHActivationParameters)
-@in_qs_constraint({'dtype': set([np.int8, np.uint8])})
+@in_qs_constraint({'dtype': set([np.int8])})
 @out_qs_constraint({'dtype': set([np.int8, np.int16])})
 @options(
     {
@@ -41,21 +41,29 @@ class SoftmaxTanHMult(MultQuantizionHandler):
     def _quantize(cls, params, in_qs, stats, **kwargs):
         force_out_qs, _ = cls.get_mult_opts(**kwargs)
         force_out_q = force_out_qs and force_out_qs[0]
+        opts = kwargs['opts']
         if force_out_q:
-            return None
+            if force_out_q.forced_scale or force_out_q.forced_zero_point:
+                return None
+            if isinstance(params, SoftMaxParameters):
+                dtypes = [np.int8, np.int16]
+            else:
+                dtypes = [np.int16]
+            if force_out_q.forced_dtype and force_out_q.dtype not in dtypes:
+                return None
+
         in_qs = cls.force_symmetric_and_dtype(in_qs, dtype=np.int8)
         if in_qs is None:
             return None
-        opts = kwargs['opts']
         # force the input to be POW2 scaled
         pow2_scale = np.power(2, np.ceil(np.log2(in_qs[0].scale)))
         in_q = QType(min_val=in_qs[0].min_val, max_val=in_qs[0].max_val,
                      dtype=np.int8, scale=pow2_scale, forced=True)
-        if opts.get('softmax_out_8bits', None):
+        if opts.get('softmax_out_8bits', None) or (force_out_q and force_out_q.dtype == np.int8):
             params.at_options.softmax_out_8bits = 1
             o_q = QType(min_val=-1, max_val=1, dtype=np.int8,
-                        scale=2**(-7), forced=True)
+                        scale=2**(-7))
         else:
             o_q = QType(min_val=-1, max_val=1, dtype=np.int16,
-                        scale=2**(-15), forced=True)
+                        scale=2**(-15))
         return QRec.scaled(in_qs=[in_q], out_qs=[o_q])

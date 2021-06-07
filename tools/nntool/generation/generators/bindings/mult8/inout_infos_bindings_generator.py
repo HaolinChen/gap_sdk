@@ -33,6 +33,9 @@ def in_out_infos_bindings_generator(gen, node, qrec, in_eparams, out_eparams, cn
         return False
     if isinstance(node, (GlobalPoolParameters, PoolingParameters, QuantizeParameters)):
         set_in_out_bindings(gen, in_eparams, out_eparams, cname, node, qrec)
+    elif isinstance(node, ConvFusionParameters) and node.fusion_type == "pool_active":
+        cnodes = node.contained_nodes()
+        set_in_out_bindings(gen, in_eparams, out_eparams, cname, cnodes[0], qrec)
     else:
         return False
     return True

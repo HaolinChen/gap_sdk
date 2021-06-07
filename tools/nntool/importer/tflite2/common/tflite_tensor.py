@@ -104,7 +104,8 @@ NP_TYPES = {
     'INT32': np.int32,
     'INT64': np.int64,
     'INT8': np.int8,
-    'UINT8': np.uint8
+    'UINT8': np.uint8,
+    'COMPLEX64': np.complex64 
 }
 
 class TFLiteTensorWrapper(TensorBase):

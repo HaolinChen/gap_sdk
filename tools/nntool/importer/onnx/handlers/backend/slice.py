@@ -13,6 +13,7 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+import sys
 import numpy as np
 from graph.dim import Dim
 from graph.types import ConstantInputParameters, NNEdge, StridedSliceParameters
@@ -53,7 +54,9 @@ class Slice(ConstantMixin, BackendHandler):
                     begin, end, step = slices[slice_idx]
                     begin = max(min(begin if begin >= 0 else dim + begin, dim), 0)
                     end = max(min(end if end >= 0 else dim + end, dim), -1)
-                    p_slices.append((begin, None if end == -1 else end, step))
+                    # -sys.maxsize is used to indicate 0 in the reverse slice direction
+                    # this makes it compatible with the numpy slice
+                    p_slices.append((begin, -sys.maxsize if end == -1 else end, step))
                     if step < 0:
                         p_shape.append((begin - end)//-step)
                     else:

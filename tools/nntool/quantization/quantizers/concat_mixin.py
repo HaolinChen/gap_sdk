@@ -16,6 +16,7 @@
 import logging
 from abc import ABC, abstractmethod
 from copy import deepcopy
+from quantization.qtype import QType
 
 from quantization.new_qrec import QRec
 
@@ -28,31 +29,38 @@ class ConcatMixin(ABC):
         force_out_q = force_out_qs[0] if force_out_qs else None
         forced_in_qs = [in_q for in_q in in_qs if in_q.forced]
         # two inputs cannot be forced to different values
-        if forced_in_qs and any(in_q != forced_in_qs[0] for in_q in forced_in_qs[1::]):
+        if forced_in_qs and not QType.forced_equal(*forced_in_qs):
             LOG.info(
                 'two input qtypes of concat %s are forced to different qtypes', params.name)
             return None
         # input cannot be forced to different value than output
-        if force_out_q and not all(in_q == force_out_q for in_q in forced_in_qs):
+        if force_out_q and not force_out_q.can_force(*forced_in_qs):
             LOG.info(
                 'output and input of concat %s are forced to different qtypes', params.name)
             return None
 
         backwards = kwargs.get('backwards')
         # if we are going backwards or are forced
-        if backwards or force_out_q:
-            # if output must be forced
-            assert force_out_q, f'going backwards at {params.name} but output is not forced'
-            in_qs = [deepcopy(force_out_q) for _ in in_qs]
-            return QRec(ktype=cls.KTYPE, in_qs=in_qs, out_qs=[deepcopy(force_out_q)])
+        if backwards:
+            if force_out_q:
+                ok = True
+                if force_out_q.forced_dtype and any(in_q.dtype != force_out_q.dtype for in_q in in_qs):
+                    ok = False
+                if force_out_q.forced_zero_point or force_out_q.forced_scale or force_out_q.forced_q:
+                    ok = False
+                # if output must be forced
+                if not ok:
+                    in_qs = [deepcopy(force_out_q) for _ in in_qs]
+                    return QRec(ktype=cls.KTYPE, in_qs=in_qs, out_qs=[deepcopy(force_out_q)])
 
         # if all the inputs are the same qtype then we output that qtype
         if all(in_qs[0] == in_q for in_q in in_qs[1::]):
             return QRec(ktype=cls.KTYPE, in_qs=in_qs, out_qs=[deepcopy(in_qs[0])])
 
         # our output cannot be forced at this point
-        # if an input is forced then all forced inputs must be the same here
-        if forced_in_qs:
+        # if an input has scale or q forced then all forced inputs must be the same here
+        # TODO - have a general function for this problem - should pick with force constraints respecting dtype
+        if forced_in_qs and any(fin_qs.forced_scale or fin_qs.forced_q for fin_qs in forced_in_qs):
             in_qs = [deepcopy(forced_in_qs[0]) for _ in in_qs]
             return QRec(ktype=cls.KTYPE, in_qs=in_qs, out_qs=[deepcopy(forced_in_qs[0])])
 

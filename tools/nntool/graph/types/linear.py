@@ -67,7 +67,6 @@ class FcParameters(MultiplicativeBiasParameters, SingleInputAndOutput):
         return 0
 
     def get_output_size(self, in_dims):
-        self.in_dims = in_dims
         if self._batch_size > 1:
             if self._batch_minor:
                 out_dim = Dim.named(c=self.filter.out_c,

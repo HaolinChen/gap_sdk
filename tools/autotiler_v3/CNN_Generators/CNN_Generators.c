@@ -1846,7 +1846,7 @@ int CNN_ConvolutionPoolReLU(
 	SetBiasKerName = CNN_FindMatchingKernel(ConvDP?KOP_SETBIAS_DP:KOP_SETBIAS, KOP_NONE, ParFeat, Bias_DataSize, 0, 0, 0, ConvOut_DataSize, 0,0,0,0,0,0, 0,0,0,0,0,0, 0);
 
 	if (SetBiasKerName==0) GenTilingError("CNN_ConvolutionPoolReLU Kernel: %s, Can't find a matching Set Bias basic kernel", Name);
-	if (COper == KOP_CONV_DP && Height == 1) COper = KOP_CONV1D_DP;
+	if (COper == KOP_CONV_DP && Height == 1 && Fcx == 1 && Fcy != 1) COper = KOP_CONV1D_DP;
 	ConvKerName = CNN_FindMatchingKernel(COper, KOP_NONE, ParFeat,
 					 In_DataSize, Filter_DataSize, 0 /* Bias_DataSize */, 0, ConvOut_DataSize,
 					 Fcx, Fcy, Dcx, Dcy, Scx, Scy,
@@ -2324,7 +2324,7 @@ int CNN_ConvolutionMulBiasPoolReLU(
 	if (DWConv && (InFeat != OutFeat)) GenTilingError("CNN_ConvolutionMulBiasPoolReLU Kernel: %s, Depth wise convolution requested with InFeat:%d != OutFeat:%d", Name, InFeat, OutFeat);
 	SetBiasKerName = CNN_FindMatchingKernel(ConvDP?KOP_SETBIAS_DP:KOP_SETBIAS, KOP_NONE, ParFeat, Bias_DataSize, 0, 0, 0, ConvOut_DataSize, 0,0,0,0,0,0, 0,0,0,0,0,0, 0);
 	if (SetBiasKerName==0) GenTilingError("CNN_ConvolutionMulBiasPoolReLU Kernel: %s, Can't find a matching Set Bias basic kernel", Name);
-	if (COper == KOP_CONV_DP && Height == 1) COper = KOP_CONV1D_DP;
+	if (COper == KOP_CONV_DP && Height == 1 && Fcx == 1 && Fcy != 1) COper = KOP_CONV1D_DP;
 	ConvKerName = CNN_FindMatchingKernel(COper, KOP_NONE, ParFeat,
 					 In_DataSize, Filter_DataSize, 0, 0, ConvOut_DataSize,
 					 Fcx, Fcy, Dcx, Dcy, Scx, Scy,

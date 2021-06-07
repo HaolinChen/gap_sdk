@@ -96,6 +96,14 @@ class QuantizionHandler(ConstraintBase):
             params.ker_out_order = out_order
 
     @classmethod
+    def get_in_qs_from_stats(cls, params, stats, in_qs, **kwargs):
+        return cls._get_in_qs_from_stats(params, stats, in_qs, **kwargs)
+
+    @classmethod
+    def _get_in_qs_from_stats(cls, params, stats, in_qs, **kwargs):
+        raise NotImplementedError("no _get_in_qs_from_stats method implemented")
+
+    @classmethod
     def _quantize(cls, params, in_qs, stats, **kwargs):
         raise NotImplementedError("no _quantize method implemented")
 

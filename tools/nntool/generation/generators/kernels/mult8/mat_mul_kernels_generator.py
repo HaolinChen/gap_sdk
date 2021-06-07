@@ -1,4 +1,4 @@
-# Copyright (C) 2020  GreenWaves Technologies, SAS
+# Copyright (C) 2020, 2021  GreenWaves Technologies, SAS
 
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU Affero General Public License as
@@ -14,18 +14,14 @@
 
 import logging
 
-from generation.at_types.at_params import NO_ACTIVATION, gen_activation_op
+from generation.at_generators.utils import at_bits
+from generation.at_types.at_params import gen_activation_op
 from generation.at_types.gen_ctrl import GenCtrl
-from generation.code_block import CodeBlock
-from generation.generator_decorators import (QREC_MULT8,
-                                                        generation_function)
+from generation.generator_decorators import QREC_MULT8, generation_function
 from graph.types import (ActivationParameters, MatMulOpFusionParameters,
                          MatMulOpParameters)
 
-from ..autotiler_kernel import (AutotilerKernel, gen_include_paths,
-                                gen_includes, gen_sources,
-                                kernel_include_paths, kernel_includes,
-                                kernel_sources)
+from ..autotiler_kernel import NewAutoTilerKernel
 
 LOG = logging.getLogger("nntool." + __name__)
 
@@ -37,101 +33,68 @@ MAT_MUL_OPER = "KOP_MATMUL"
     (MatMulOpParameters, MatMulOpFusionParameters),
     qrec_types=(QREC_MULT8, ))
 def mat_mul_kernel_generator(gen, node, qrec, in_eparams, out_eparams, cname):
-    del in_eparams, out_eparams, qrec
+    del in_eparams, out_eparams
     if isinstance(node, MatMulOpFusionParameters):
         cnodes = node.contained_nodes()
         act_node = cnodes[-1] if isinstance(cnodes[-1],
                                             ActivationParameters) else None
     else:
         act_node = None
+
     gen.kernels.append(
         MatMulKernel(
-            node.name, cname, node, act_node, at_ver=gen.opts['at_ver'],
-            force_relu=gen.force_relu))
+            node.name, cname, node, qrec, act_node, force_relu=gen.force_relu))
     return True
 
-# int CNN_MatMulAct_SQ8(
-# 	char *Name,
+class MatMulKernel(NewAutoTilerKernel):
+    CALL_TEMPLATE = '''
+// generator for {node_name}
+CNN_MatMulAct_SQ8("{cname}", {gen_ctrl}, {bias_datasize}, 1, {width_1},
+                  {height_1}, {width_2}, {height_2}, 0, 0, 1, 1, {matmul_op}, {act_op});
+'''
 
-# 	CNN_GenControl_T *Ctrl,
-
-# 	int Bias_DataSize,
-# 	int Scale_DataSize,
-
-# 	int ColM1,
-# 	int LineM1,
-# 	int ColM2,
-# 	int LineM2,
-
-# 	int Width,
-# 	int Height,
-# 	int Scx,
-# 	int Scy,
-
-#         KernelOper_T MatMulOper,
-#         KernelOper_T ActOper
-# 	)
-def gen_mat_mul_sq8(code_block, cname, ctrl, colM1, lineM1, colM2, lineM2, act_oper):
-    code_block.write('CNN_MatMulAct_SQ8("{}", {}, 4, 1, {}, {}, {}, {}, 0, 0, 1, 1, {}, {});'.format(
-        cname, ctrl,
-        colM1, lineM1,
-        colM2, lineM2,
-        MAT_MUL_OPER,
-        act_oper))
-
-
-@kernel_sources(
-    '$(TILER_CNN_KERNEL_PATH_SQ8)/CNN_MatAlgebra_SQ8.c')
-@kernel_include_paths(
-    '$(TILER_CNN_KERNEL_PATH)',
-    '$(TILER_CNN_KERNEL_PATH_SQ8)')
-@kernel_includes(
-    'CNN_BasicKernels_SQ8.h')
-@gen_sources(
-    '$(TILER_CNN_GENERATOR_PATH)/CNN_Generator_Util.c',
-    '$(TILER_CNN_GENERATOR_PATH_SQ8)/CNN_Generators_SQ8.c')
-@gen_include_paths(
-    '$(TILER_CNN_GENERATOR_PATH)',
-    '$(TILER_CNN_GENERATOR_PATH_SQ8)')
-@gen_includes(
-    'CNN_Generators_SQ8.h')
-class MatMulKernel(AutotilerKernel):
-    def __init__(self, node_name, cname, matmul_params, act_params, at_ver=3, gen_ctrl=None, force_relu=True):
+    def __init__(self, node_name, cname, matmul_params, matmul_qrec, act_params, gen_ctrl=None, force_relu=True):
         if gen_ctrl is None:
             self.gen_ctrl = gen_ctrl = GenCtrl(None, cname=cname)
         else:
             gen_ctrl.cname = cname
             self.gen_ctrl = gen_ctrl
 
-        self.cname = cname
-        self.node_name = node_name
-        self.at_ver = at_ver
-
         if act_params is not None:
-            self.at_act_params = gen_activation_op(
+            act_op = gen_activation_op(
                 act_params.activation, force_relu=force_relu)
         else:
-            self.at_act_params = NO_ACTIVATION
+            act_op = 'KOP_NONE'
 
-        self.matmul_params = matmul_params
-        self.lineM1 = matmul_params.in_dims[0][0]
-        self.colM1 = matmul_params.in_dims[0][1]
-        self.lineM2 = matmul_params.in_dims[1][0]
-        self.colM2 = matmul_params.in_dims[1][1]
-
-    def code(self, code_block=None):
-        if code_block is None:
-            code_block = CodeBlock()
-
-        code_block.comment("generator for {}", self.node_name)
-
-        if not self.gen_ctrl.is_unmodified:
-            self.gen_ctrl.gen_ctrl_decl(code_block)
-            gen_ctrl = self.gen_ctrl.ctrl_name
+        if len(matmul_params.in_dims) == 3:
+            bias_datasize = at_bits(matmul_qrec.in_qs[2])
+            if len(matmul_qrec.in_qs[0].scale) == 1:
+                matmul_op = 'KOP_MATMUL_SCALE_SCALAR'
+            else:
+                matmul_op = 'KOP_MATMUL'
         else:
-            gen_ctrl = "0"
+            bias_datasize = 0
+            matmul_op = 'KOP_MATMUL_NOBIAS'
 
-        gen_mat_mul_sq8(code_block, self.cname, gen_ctrl, self.colM1,
-                        self.lineM1, self.colM2, self.lineM2, self.at_act_params)
+        height_1 = matmul_params.in_dims[0][0]
+        width_1 = matmul_params.in_dims[0][1]
+        height_2 = matmul_params.in_dims[1][0]
+        width_2 = matmul_params.in_dims[1][1]
 
-        return code_block
+        # attributes affecting generation
+        attrs = {
+            'height_1': height_1,
+            'width_1': width_1,
+            'height_2': height_2,
+            'width_2': width_2,
+            'bias_datasize': bias_datasize,
+            'matmul_op': matmul_op,
+            'act_op': act_op
+        }
+
+        # other attributes
+        extra_attrs = {
+            'cname': cname,
+            'node_name': node_name
+        }
+        super().__init__(attrs, extra_attrs, gen_ctrl=gen_ctrl)

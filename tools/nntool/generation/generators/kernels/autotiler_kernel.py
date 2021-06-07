@@ -112,7 +112,7 @@ class NewAutoTilerKernel(AutotilerKernel):
         except Exception as exc:
             raise ValueError(f'exception processing template {self.get_template()} in handler {self.__class__.__name__} {exc}') from exc
 
-        code_block.write('{}', call_str)
+        code_block.write_lines(call_str)
         return code_block
 
     def __hash__(self) -> int:

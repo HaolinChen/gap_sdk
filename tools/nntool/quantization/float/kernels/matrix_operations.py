@@ -36,15 +36,10 @@ class PieceWiseFloat32Mixin():
         if qrec is None:
             qrec = AllFloatQRec()
         in_tensors = qrec.prepare_inputs(params, in_tensors, ktype="float")
-        if params.transpose_in:
-            in_tensors = [(np.transpose(in_tensor, params.transpose_in[idx]) if params.transpose_in[idx] else in_tensor)
-                          for idx, in_tensor in enumerate(in_tensors)]
         if isinstance(params, Broadcastable) and params.is_broadcasted:
             in_tensors = params.broadcast_inputs(in_tensors)
 
         out_tensor = op(in_tensors[0], in_tensors[1])
-        if params.transpose_out:
-            out_tensor = np.transpose(out_tensor, params.transpose_out[0])
         return qrec.get_outputs(params, [out_tensor], ktype="float")
 
 
@@ -128,9 +123,6 @@ class MatMulFloat32(KernelBase):
         if qrec is None:
             qrec = AllFloatQRec()
         in_tensors = qrec.prepare_inputs(params, in_tensors, ktype="float")
-        if params.transpose_in:
-            in_tensors = [(np.transpose(in_tensor, params.transpose_in[idx]) if params.transpose_in[idx] else in_tensor)
-                          for idx, in_tensor in enumerate(in_tensors)]
         if len(in_tensors) > 2:
             biases = in_tensors[2]
             if len(biases.shape) == 1:
@@ -138,9 +130,6 @@ class MatMulFloat32(KernelBase):
         else:
             biases = 0
         output_tensor = np.matmul(in_tensors[0], in_tensors[1]) + biases
-        if params.transpose_out:
-            output_tensor = np.transpose(output_tensor, params.transpose_out[0])
-
         return qrec.get_outputs(params, [output_tensor], ktype="float")
 
 
